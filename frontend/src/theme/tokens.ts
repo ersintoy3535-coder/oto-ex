@@ -1,4 +1,4 @@
-export type ThemeName = 'navy' | 'dark';
+export type ThemeName = 'navy' | 'dark' | 'light';
 
 export type ThemeColors = {
   surface: string;
@@ -63,7 +63,28 @@ export const DARK: ThemeColors = {
   divider: '#1F2229',
 };
 
-export const THEMES: Record<ThemeName, ThemeColors> = { navy: NAVY, dark: DARK };
+export const LIGHT: ThemeColors = {
+  surface: '#FFFFFF',
+  onSurface: '#0A1628',
+  surfaceSecondary: '#F5F7FA',
+  onSurfaceSecondary: '#334155',
+  surfaceTertiary: '#EDF2F7',
+  onSurfaceTertiary: '#64748B',
+  brand: '#0A1628',
+  brandPrimary: '#0A1628',
+  onBrandPrimary: '#FFFFFF',
+  brandSecondary: '#B45309',
+  brandTertiary: '#FEF3C7',
+  success: '#16A34A',
+  warning: '#D97706',
+  error: '#DC2626',
+  info: '#64748B',
+  border: '#E2E8F0',
+  borderStrong: '#CBD5E1',
+  divider: '#F1F5F9',
+};
+
+export const THEMES: Record<ThemeName, ThemeColors> = { navy: NAVY, dark: DARK, light: LIGHT };
 
 export const spacing = { xs: 4, sm: 8, md: 12, lg: 16, xl: 24, xxl: 32, xxxl: 48 };
 export const radius = { sm: 6, md: 12, lg: 20, pill: 999 };

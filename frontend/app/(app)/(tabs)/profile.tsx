@@ -31,6 +31,7 @@ export default function ProfileScreen() {
   const themeOptions: { key: ThemeName; label: string; swatches: [string, string]; desc: string }[] = [
     { key: 'navy', label: 'Navy Blue', swatches: ['#0A1628', '#FFC93C'], desc: 'Koyu lacivert · Sarı vurgu' },
     { key: 'dark', label: 'Carbon Dark', swatches: ['#0D0E11', '#E63946'], desc: 'Koyu karbon · Kırmızı vurgu' },
+    { key: 'light', label: 'Pure White', swatches: ['#FFFFFF', '#B45309'], desc: 'Beyaz zemin · Amber vurgu' },
   ];
 
   return (

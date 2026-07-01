@@ -19,7 +19,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     (async () => {
       const stored = await AsyncStorage.getItem(STORAGE_KEY);
-      if (stored === 'navy' || stored === 'dark') setThemeName(stored);
+      if (stored === 'navy' || stored === 'dark' || stored === 'light') setThemeName(stored);
     })();
   }, []);
 

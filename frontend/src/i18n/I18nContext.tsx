@@ -14,8 +14,8 @@ export const LANGUAGES: { code: Lang; label: string; flag: string }[] = [
 
 const dict: Record<Lang, Record<string, string>> = {
   tr: {
-    'app.title': 'OtoEkspertiz AI', 'app.eyebrow': 'OTOEKSPERTİZ AI',
-    'home.title': 'Aracını\nAnaliz Et', 'home.sub': 'Marka, model, yıl gir — hasar, renk, mekanik, piyasa fiyatı anında.',
+    'app.title': 'AI Oto Analiz', 'app.eyebrow': 'AI OTO ANALİZ',
+    'home.title': 'Aracını\nAnaliz Et', 'home.sub': '7/24 hazır kıta, bir oto analiz ortağın.',
     'form.title': 'ARAÇ BİLGİLERİ',
     'field.marka': 'Marka (örn: Toyota)', 'field.model': 'Model (örn: Corolla 1.6)',
     'field.yil': 'Yıl (2018)', 'field.km': 'Km (opsiyonel)',
@@ -60,8 +60,8 @@ const dict: Record<Lang, Record<string, string>> = {
     'credits.card': 'Kart ile',
   },
   en: {
-    'app.title': 'OtoEkspertiz AI', 'app.eyebrow': 'OTOEKSPERTİZ AI',
-    'home.title': 'Analyze\nYour Car', 'home.sub': 'Enter brand, model, year — damage, color, mechanics, market price instantly.',
+    'app.title': 'AI Auto Analysis', 'app.eyebrow': 'AI AUTO ANALYSIS',
+    'home.title': 'Analyze\nYour Car', 'home.sub': '24/7 on standby — your auto-analysis partner.',
     'form.title': 'VEHICLE INFO',
     'field.marka': 'Brand (e.g. Toyota)', 'field.model': 'Model (e.g. Corolla 1.6)',
     'field.yil': 'Year (2018)', 'field.km': 'Km (optional)',
@@ -106,8 +106,8 @@ const dict: Record<Lang, Record<string, string>> = {
     'credits.card': 'Card',
   },
   zh: {
-    'app.title': 'OtoEkspertiz AI', 'app.eyebrow': '汽车专家AI',
-    'home.title': '智能\n车辆分析', 'home.sub': '输入品牌、型号、年份 — 立即获取损伤、颜色、机械和市场价格分析。',
+    'app.title': 'AI 车辆分析', 'app.eyebrow': 'AI 车辆分析',
+    'home.title': '智能\n车辆分析', 'home.sub': '全天候待命的您的汽车分析伙伴。',
     'form.title': '车辆信息', 'field.marka': '品牌（如：丰田）', 'field.model': '型号（如：卡罗拉1.6）',
     'field.yil': '年份（2018）', 'field.km': '公里数（可选）', 'field.fiyat': '卖家要价 TL（可选）', 'field.renk': '颜色（可选）',
     'damage.title': '车身与损伤', 'damage.changed': '更换零件数', 'damage.painted': '喷漆零件数', 'damage.zones': '碰撞位置',
@@ -147,8 +147,8 @@ const dict: Record<Lang, Record<string, string>> = {
     'credits.card': '刷卡',
   },
   de: {
-    'app.title': 'OtoEkspertiz AI', 'app.eyebrow': 'OTOEKSPERTIZ AI',
-    'home.title': 'Fahrzeug\nAnalysieren', 'home.sub': 'Marke, Modell, Jahr eingeben — Schäden, Farbe, Mechanik, Marktpreis sofort.',
+    'app.title': 'KI Auto-Analyse', 'app.eyebrow': 'KI AUTO-ANALYSE',
+    'home.title': 'Fahrzeug\nAnalysieren', 'home.sub': '24/7 einsatzbereit — dein Auto-Analyse-Partner.',
     'form.title': 'FAHRZEUGDATEN', 'field.marka': 'Marke (z.B. Toyota)', 'field.model': 'Modell (z.B. Corolla 1.6)',
     'field.yil': 'Jahr (2018)', 'field.km': 'Km (optional)', 'field.fiyat': 'Verkaufspreis TL (optional)', 'field.renk': 'Farbe (optional)',
     'damage.title': 'KAROSSERIE & SCHÄDEN', 'damage.changed': 'Ausgetauschte Teile', 'damage.painted': 'Lackierte Teile', 'damage.zones': 'Aufprallzone',
@@ -188,8 +188,8 @@ const dict: Record<Lang, Record<string, string>> = {
     'credits.card': 'Karte',
   },
   fr: {
-    'app.title': 'OtoEkspertiz AI', 'app.eyebrow': 'OTOEKSPERTIZ AI',
-    'home.title': 'Analyser\nVotre Voiture', 'home.sub': 'Marque, modèle, année — dommages, couleur, mécanique, prix instantanés.',
+    'app.title': 'IA Analyse Auto', 'app.eyebrow': 'IA ANALYSE AUTO',
+    'home.title': 'Analyser\nVotre Voiture', 'home.sub': "24/7 en alerte — votre partenaire d'analyse auto.",
     'form.title': 'INFO VÉHICULE', 'field.marka': 'Marque (ex: Toyota)', 'field.model': 'Modèle (ex: Corolla 1.6)',
     'field.yil': 'Année (2018)', 'field.km': 'Km (optionnel)', 'field.fiyat': 'Prix demandé TL (optionnel)', 'field.renk': 'Couleur (optionnel)',
     'damage.title': 'CARROSSERIE & DÉGÂTS', 'damage.changed': 'Pièces remplacées', 'damage.painted': 'Pièces repeintes', 'damage.zones': 'Zones d’impact',
@@ -229,8 +229,8 @@ const dict: Record<Lang, Record<string, string>> = {
     'credits.card': 'Carte',
   },
   es: {
-    'app.title': 'OtoEkspertiz AI', 'app.eyebrow': 'OTOEKSPERTIZ AI',
-    'home.title': 'Analiza\nTu Auto', 'home.sub': 'Marca, modelo, año — daños, color, mecánica y precio al instante.',
+    'app.title': 'IA Análisis Auto', 'app.eyebrow': 'IA ANÁLISIS AUTO',
+    'home.title': 'Analiza\nTu Auto', 'home.sub': '24/7 en guardia — tu socio de análisis automotriz.',
     'form.title': 'DATOS DEL VEHÍCULO', 'field.marka': 'Marca (ej: Toyota)', 'field.model': 'Modelo (ej: Corolla 1.6)',
     'field.yil': 'Año (2018)', 'field.km': 'Km (opcional)', 'field.fiyat': 'Precio pedido TL (opcional)', 'field.renk': 'Color (opcional)',
     'damage.title': 'CARROCERÍA & DAÑOS', 'damage.changed': 'Piezas reemplazadas', 'damage.painted': 'Piezas pintadas', 'damage.zones': 'Zonas de impacto',

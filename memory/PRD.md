@@ -1,4 +1,11 @@
-# OtoEkspertiz AI — PRD (v2.0)
+# AI Oto Analiz — PRD (v2.1)
+
+## v2.1 UI Rebrand (June 2026)
+- Rebranded from **OtoEkspertiz AI** → **AI OTO ANALİZ** (localized: EN "AI Auto Analysis", DE "KI Auto-Analyse", FR "IA Analyse Auto", ES "IA Análisis Auto", ZH "AI 车辆分析").
+- Home tagline in Turkish updated to "7/24 hazır kıta, bir oto analiz ortağın." (localized in all 6 languages).
+- Added **Pure White** light theme (white surfaces, navy `#0A1628` accent, amber `#B45309` secondary). Alongside Navy Blue and Carbon Dark. Hero gradient + credits pill adapted for light theme readability.
+- Backend OG card, API root, PDF header/footer/filename all updated to new brand.
+
 
 ## Overview
 Turkish + English + Chinese + German + French + Spanish mobile app for pre-purchase / pre-sale vehicle analysis. Two modes:

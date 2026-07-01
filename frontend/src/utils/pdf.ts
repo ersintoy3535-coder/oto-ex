@@ -81,7 +81,7 @@ export const buildReportHtml = (r: Report) => `
 <body>
   <div class="header">
     <div>
-      <div class="brand">OTOEKSPERTİZ AI · EKSPERTİZ RAPORU</div>
+      <div class="brand">AI OTO ANALİZ · EKSPERTİZ RAPORU</div>
       <h1>${esc(r.marka)} ${esc(r.model)}</h1>
       <div class="yil">${esc(String(r.yil))}${r.kilometre ? ' &middot; ' + new Intl.NumberFormat('tr-TR').format(r.kilometre) + ' km' : ''}</div>
     </div>
@@ -140,14 +140,14 @@ export const buildReportHtml = (r: Report) => `
   </section>` : ''}
 
   <footer>
-    Bu rapor OtoEkspertiz AI tarafından Gemini 2.5 Pro modeli ile üretilmiştir. Yatırım / satın alma kararı bilgi amaçlıdır.
+    Bu rapor AI Oto Analiz tarafından Gemini 2.5 Pro modeli ile üretilmiştir. Yatırım / satın alma kararı bilgi amaçlıdır.
   </footer>
 </body>
 </html>`;
 
 export const shareReportAsPdf = async (report: Report) => {
   const html = buildReportHtml(report);
-  const filename = `OtoEkspertiz_${report.marka}_${report.model}_${report.yil}`.replace(/[^\w-]/g, '_');
+  const filename = `AI_Oto_Analiz_${report.marka}_${report.model}_${report.yil}`.replace(/[^\w-]/g, '_');
   const { uri } = await Print.printToFileAsync({ html });
 
   if (Platform.OS === 'web') {

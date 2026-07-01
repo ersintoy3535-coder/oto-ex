@@ -99,9 +99,11 @@ class AnalyzeIn(BaseModel):
     renk: Optional[str] = None
     degisen_parca: Optional[int] = 0
     boyali_parca: Optional[int] = 0
-    darbe_bolgeleri: Optional[List[str]] = None  # ["on","arka","yan","tavan","yok"]
-    mod: Optional[str] = "buyer"  # "buyer" | "seller"
-    dil: Optional[str] = "tr"     # tr | en | zh | de | fr | es
+    degisen_parcalar_metni: Optional[str] = None  # kullanıcının serbest metni: "sağ ön çamurluk, kaput..."
+    boyali_parcalar_metni: Optional[str] = None
+    darbe_bolgeleri: Optional[List[str]] = None
+    mod: Optional[str] = "buyer"
+    dil: Optional[str] = "tr"
 
 
 class TrafficLightItem(BaseModel):
@@ -564,7 +566,11 @@ async def analyze_vehicle(data: AnalyzeIn, current_user: UserOut = Depends(get_c
     if data.renk:
         parts.append(f"Color/Renk: {data.renk}")
     parts.append(f"Değişen parça sayısı (parts replaced): {data.degisen_parca or 0}")
+    if data.degisen_parcalar_metni:
+        parts.append(f"Değişen parçaların detayı (which parts were REPLACED, user free text): {data.degisen_parcalar_metni}")
     parts.append(f"Boyalı parça sayısı (parts painted): {data.boyali_parca or 0}")
+    if data.boyali_parcalar_metni:
+        parts.append(f"Boyalı parçaların detayı (which parts were PAINTED, user free text): {data.boyali_parcalar_metni}")
     if data.darbe_bolgeleri:
         parts.append(f"Darbe bölgeleri (impact zones): {', '.join(data.darbe_bolgeleri)}")
     prompt = "\n".join(parts) + "\n\nProduce the full JSON analysis now."
@@ -630,8 +636,7 @@ async def analyze_vehicle(data: AnalyzeIn, current_user: UserOut = Depends(get_c
         boyali_parca=data.boyali_parca or 0,
         darbe_bolgeleri=data.darbe_bolgeleri or [],
         mod=data.mod or "buyer",
-        dil=lang,
-        guven_skoru=int(parsed.get("guven_skoru", 50)),
+        dil=lang,        guven_skoru=int(parsed.get("guven_skoru", 50)),
         fiyat_performans_skoru=int(parsed.get("fiyat_performans_skoru", 50)),
         ozet=parsed.get("ozet", ""),
         fiyat_min_tl=float(parsed.get("fiyat_min_tl", 0)),
@@ -965,7 +970,7 @@ async def admin_payments(_: UserOut = Depends(get_current_admin)):
 
 @api_router.get("/")
 async def root():
-    return {"message": "OtoEkspertiz AI API", "version": "2.0"}
+    return {"message": "AI Oto Analiz API", "version": "2.0"}
 
 
 # ---------------- OG Card (WhatsApp / Social Preview) ----------------
@@ -980,7 +985,7 @@ async def og_card_html(report_id: str, request: Request):
     title = f"{doc['marka']} {doc['model']} {doc['yil']} · Ekspertiz Skoru {doc.get('guven_skoru', 0)}/100"
     km = doc.get("kilometre")
     km_txt = f"{int(km):,} km · ".replace(",", ".") if km else ""
-    desc = f"{km_txt}Fiyat-Performans: {doc.get('fiyat_performans_skoru', 0)}/100 · OtoEkspertiz AI raporu"
+    desc = f"{km_txt}Fiyat-Performans: {doc.get('fiyat_performans_skoru', 0)}/100 · AI Oto Analiz raporu"
     html = f"""<!DOCTYPE html><html lang="tr"><head>
 <meta charset="utf-8" />
 <meta property="og:type" content="website" />
@@ -1032,7 +1037,7 @@ async def og_card_png(report_id: str):
                 continue
         return ImageFont.load_default()
 
-    d.text((60, 60), "OTOEKSPERTİZ AI", fill=(255, 201, 60), font=font(30))
+    d.text((60, 60), "AI OTO ANALİZ", fill=(255, 201, 60), font=font(30))
     d.text((60, 110), f"{doc['marka']} {doc['model']}", fill=(255, 255, 255), font=font(80))
     d.text((60, 210), f"{doc['yil']}", fill=(199, 210, 224), font=font(48))
     km = doc.get("kilometre")
@@ -1052,7 +1057,7 @@ async def og_card_png(report_id: str):
     # bottom summary
     fp = int(doc.get("fiyat_performans_skoru", 0))
     d.text((60, 480), f"FIYAT-PERFORMANS  {fp}/100", fill=(255, 201, 60), font=font(28))
-    d.text((60, 540), "Detaylı ekspertiz raporunu OtoEkspertiz AI'da görüntüle", fill=(199, 210, 224), font=font(22))
+    d.text((60, 540), "Detaylı ekspertiz raporunu AI Oto Analiz'de görüntüle", fill=(199, 210, 224), font=font(22))
 
     buf = _io.BytesIO()
     img.save(buf, format="PNG")

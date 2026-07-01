@@ -41,16 +41,18 @@ export default function SearchScreen() {
   const [km, setKm] = useState('');
   const [fiyat, setFiyat] = useState('');
   const [renk, setRenk] = useState('');
-  const [degisen, setDegisen] = useState(0);
-  const [boyali, setBoyali] = useState(0);
+  const [degisenMetin, setDegisenMetin] = useState('');
+  const [boyaliMetin, setBoyaliMetin] = useState('');
   const [zones, setZones] = useState<Zone[]>(['yok']);
   const [mode, setMode] = useState<'buyer' | 'seller'>('buyer');
   const [loading, setLoading] = useState(false);
   const [errMsg, setErrMsg] = useState<string | null>(null);
   const [credits, setCredits] = useState<number | null>(null);
 
-  const gradientEnd = themeName === 'navy' ? 'rgba(10,22,40,0.85)' : 'rgba(13,14,17,0.85)';
-  const gradientMid = themeName === 'navy' ? 'rgba(10,22,40,0.2)' : 'rgba(13,14,17,0.2)';
+  const gradientEnd = themeName === 'navy' ? 'rgba(10,22,40,0.85)' : themeName === 'dark' ? 'rgba(13,14,17,0.85)' : 'rgba(255,255,255,0.85)';
+  const gradientMid = themeName === 'navy' ? 'rgba(10,22,40,0.2)' : themeName === 'dark' ? 'rgba(13,14,17,0.2)' : 'rgba(255,255,255,0.2)';
+  const isLight = themeName === 'light';
+  const creditsPillBg = isLight ? 'rgba(255,255,255,0.9)' : 'rgba(0,0,0,0.55)';
 
   const loadCredits = useCallback(async () => {
     try {
@@ -77,6 +79,9 @@ export default function SearchScreen() {
     setLoading(true);
     try {
       const cleanZones = zones.includes('yok') ? ['yok'] : zones;
+      // Derive count from free-text: comma / newline separated non-empty tokens
+      const countFromText = (s: string) =>
+        s.split(/[,\n;]/).map((x) => x.trim()).filter(Boolean).length;
       const report = await apiFetch('/analyze', {
         method: 'POST',
         body: JSON.stringify({
@@ -84,7 +89,10 @@ export default function SearchScreen() {
           kilometre: km ? parseInt(km, 10) : undefined,
           istenilen_fiyat: fiyat ? parseFloat(fiyat) : undefined,
           renk: renk.trim() || undefined,
-          degisen_parca: degisen, boyali_parca: boyali,
+          degisen_parca: countFromText(degisenMetin),
+          boyali_parca: countFromText(boyaliMetin),
+          degisen_parcalar_metni: degisenMetin.trim() || undefined,
+          boyali_parcalar_metni: boyaliMetin.trim() || undefined,
           darbe_bolgeleri: cleanZones, mod: mode, dil: lang,
         }),
       }, token);
@@ -117,7 +125,7 @@ export default function SearchScreen() {
           <View style={styles.hero}>
             <Image source={{ uri: HERO }} style={StyleSheet.absoluteFillObject} contentFit="cover" />
             <LinearGradient colors={[gradientMid, gradientEnd, colors.surface]} style={StyleSheet.absoluteFillObject} />
-            <Pressable testID="credits-pill" onPress={() => router.push('/(app)/credits')} style={styles.creditsPill}>
+            <Pressable testID="credits-pill" onPress={() => router.push('/(app)/credits')} style={[styles.creditsPill, { backgroundColor: creditsPillBg }]}>
               <Ionicons name="flash" size={14} color={colors.brand} />
               <Text style={styles.creditsPillText}>{credits ?? '—'}</Text>
               <Text style={styles.creditsPillSub}> {t('credits.balanceSub')}</Text>
@@ -156,15 +164,32 @@ export default function SearchScreen() {
 
             {/* Damage section */}
             <Text style={styles.sectionLabel}>{t('damage.title')}</Text>
-            <View style={styles.damageRow}>
-              <Text style={styles.damageLabel}>{t('damage.changed')}</Text>
-              <Counter v={degisen} on={setDegisen} testID="degisen" />
-            </View>
-            <View style={styles.damageRow}>
-              <Text style={styles.damageLabel}>{t('damage.painted')}</Text>
-              <Counter v={boyali} on={setBoyali} testID="boyali" />
-            </View>
-            <Text style={styles.smallLabel}>{t('damage.zones')}</Text>
+
+            <Text style={styles.fieldLabel}>{t('damage.changed')}</Text>
+            <TextInput
+              testID="input-degisen"
+              placeholder={lang === 'tr' ? 'Örn: Sağ ön çamurluk, kaput, ön tampon' : 'e.g. Right front fender, hood, front bumper'}
+              placeholderTextColor={colors.onSurfaceTertiary}
+              style={[styles.input, styles.multiline]}
+              value={degisenMetin}
+              onChangeText={setDegisenMetin}
+              multiline
+              numberOfLines={2}
+            />
+
+            <Text style={styles.fieldLabel}>{t('damage.painted')}</Text>
+            <TextInput
+              testID="input-boyali"
+              placeholder={lang === 'tr' ? 'Örn: Sol arka kapı, tavan, sağ marşpiyel' : 'e.g. Left rear door, roof, right rocker panel'}
+              placeholderTextColor={colors.onSurfaceTertiary}
+              style={[styles.input, styles.multiline]}
+              value={boyaliMetin}
+              onChangeText={setBoyaliMetin}
+              multiline
+              numberOfLines={2}
+            />
+
+            <Text style={styles.fieldLabel}>{t('damage.zones')}</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.zoneRow}>
               {ZONES.map((z) => {
                 const active = zones.includes(z);
@@ -221,7 +246,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   eyebrow: { color: colors.brandSecondary, fontSize: 11, letterSpacing: 2, marginBottom: spacing.sm, fontFamily: fonts.medium },
   title: { color: colors.onSurface, fontSize: 38, lineHeight: 42, marginBottom: spacing.md, fontFamily: fonts.semibold },
   sub: { color: colors.onSurfaceSecondary, fontSize: 13, lineHeight: 18, fontFamily: fonts.regular },
-  creditsPill: { position: 'absolute', top: spacing.md, right: spacing.lg, flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: 'rgba(0,0,0,0.55)', paddingHorizontal: spacing.md, paddingVertical: 6, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.brand, zIndex: 2 },
+  creditsPill: { position: 'absolute', top: spacing.md, right: spacing.lg, flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: spacing.md, paddingVertical: 6, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.brand, zIndex: 2 },
   creditsPillText: { color: colors.brand, fontSize: 14, fontFamily: fonts.semibold },
   creditsPillSub: { color: colors.onSurfaceSecondary, fontSize: 11, marginLeft: 2, fontFamily: fonts.regular },
   form: { padding: spacing.xl, gap: spacing.md },
@@ -233,6 +258,8 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   modeText: { color: colors.onSurfaceTertiary, fontSize: 13, fontFamily: fonts.medium },
   modeTextActive: { color: colors.brand, fontFamily: fonts.semibold },
   input: { backgroundColor: colors.surfaceSecondary, borderColor: colors.border, borderWidth: 1, borderRadius: radius.md, paddingHorizontal: spacing.lg, paddingVertical: 14, color: colors.onSurface, fontSize: 15, fontFamily: fonts.regular },
+  multiline: { minHeight: 60, textAlignVertical: 'top', paddingTop: 12 },
+  fieldLabel: { color: colors.brandSecondary, fontSize: 12, marginTop: spacing.sm, marginBottom: 4, fontFamily: fonts.medium },
   damageRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: colors.surfaceSecondary, borderColor: colors.border, borderWidth: 1, borderRadius: radius.md, paddingHorizontal: spacing.lg, paddingVertical: 10 },
   damageLabel: { color: colors.onSurface, fontSize: 14, fontFamily: fonts.medium },
   counter: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },

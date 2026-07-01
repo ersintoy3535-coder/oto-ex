@@ -17,6 +17,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { apiFetch, useAuth } from '@/src/auth/AuthContext';
+import { useI18n } from '@/src/i18n/I18nContext';
 import { useTheme } from '@/src/theme/ThemeContext';
 import { fonts, radius, spacing, ThemeColors } from '@/src/theme/tokens';
 
@@ -25,8 +26,11 @@ const HERO = 'https://images.unsplash.com/photo-1558678542-d52f29185251?crop=ent
 export default function LoginScreen() {
   const router = useRouter();
   const { signIn } = useAuth();
-  const { colors } = useTheme();
+  const { colors, themeName } = useTheme();
+  const { t } = useI18n();
   const styles = useMemo(() => createStyles(colors), [colors]);
+  const gradientEnd = themeName === 'light' ? 'rgba(255,255,255,0.9)' : 'rgba(10,22,40,0.9)';
+  const gradientMid = themeName === 'light' ? 'rgba(255,255,255,0.3)' : 'rgba(10,22,40,0.3)';
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -60,11 +64,11 @@ export default function LoginScreen() {
           <View style={styles.hero}>
             <Image source={{ uri: HERO }} style={StyleSheet.absoluteFillObject} contentFit="cover" />
             <LinearGradient
-              colors={['rgba(10,22,40,0.3)', 'rgba(10,22,40,0.9)', colors.surface]}
+              colors={[gradientMid, gradientEnd, colors.surface]}
               style={StyleSheet.absoluteFillObject}
             />
             <View style={styles.heroContent}>
-              <Text style={styles.eyebrow}>OTOEKSPERTİZ AI</Text>
+              <Text style={styles.eyebrow}>{t('app.eyebrow')}</Text>
               <Text style={styles.title}>Hoş geldin</Text>
               <Text style={styles.sub}>Aracını analiz etmek için giriş yap.</Text>
             </View>

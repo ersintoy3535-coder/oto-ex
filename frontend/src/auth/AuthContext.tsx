@@ -28,6 +28,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const u = await AsyncStorage.getItem(USER_KEY);
         if (t) setToken(t);
         if (u) setUser(JSON.parse(u));
+        // refresh from server to pick up is_admin / credits changes
+        if (t) {
+          try {
+            const fresh = await apiFetch('/auth/me', {}, t);
+            setUser(fresh);
+            await AsyncStorage.setItem(USER_KEY, JSON.stringify(fresh));
+          } catch {}
+        }
       } catch (e) {
         console.log('auth restore err', e);
       } finally {

@@ -31,6 +31,9 @@ JWT_SECRET = os.environ['JWT_SECRET']
 EMERGENT_LLM_KEY = os.environ['EMERGENT_LLM_KEY']
 STRIPE_API_KEY = os.environ['STRIPE_API_KEY']
 FREE_CREDITS = int(os.environ.get('FREE_CREDITS_ON_SIGNUP', '3'))
+ADMIN_EMAIL = os.environ.get('ADMIN_EMAIL', '').lower().strip()
+ADMIN_PASSWORD = os.environ.get('ADMIN_PASSWORD', '')
+ADMIN_RESET_PASSWORD = os.environ.get('ADMIN_RESET_PASSWORD', 'false').lower() in ('1', 'true', 'yes', 'on')
 JWT_ALG = "HS256"
 JWT_EXPIRE_DAYS = 30
 
@@ -77,6 +80,7 @@ class UserOut(BaseModel):
     email: EmailStr
     full_name: Optional[str] = None
     query_credits: int = 0
+    is_admin: bool = False
 
 
 class TokenOut(BaseModel):
@@ -182,6 +186,7 @@ def user_to_out(u: dict) -> UserOut:
         email=u["email"],
         full_name=u.get("full_name"),
         query_credits=int(u.get("query_credits", 0)),
+        is_admin=bool(u.get("is_admin", False)),
     )
 
 
@@ -202,6 +207,12 @@ async def get_current_user(token: str = Depends(oauth2_scheme)) -> UserOut:
     if not user:
         raise cred_exc
     return user_to_out(user)
+
+
+async def get_current_admin(current: UserOut = Depends(get_current_user)) -> UserOut:
+    if not current.is_admin:
+        raise HTTPException(status_code=403, detail="Admin yetkisi gerekli")
+    return current
 
 
 def strip_json_fence(text: str) -> str:
@@ -452,28 +463,30 @@ Her kategoride EN AZ 3 madde olsun. Türkçe cevap ver, para birimi TL. Fiyatlar
 
 @api_router.post("/analyze", response_model=AnalysisReport)
 async def analyze_vehicle(data: AnalyzeIn, current_user: UserOut = Depends(get_current_user)):
-    # Atomic credit deduction (only if credits > 0)
-    result = await db.users.find_one_and_update(
-        {"id": current_user.id, "query_credits": {"$gt": 0}},
-        {"$inc": {"query_credits": -1}},
-        return_document=False,
-    )
-    if not result:
-        raise HTTPException(
-            status_code=402,
-            detail={
-                "code": "insufficient_credits",
-                "message": "Sorgu hakkınız bitti. Reklam izle veya paket satın al.",
-            },
+    # Admins bypass credit deduction entirely
+    if not current_user.is_admin:
+        # Atomic credit deduction (only if credits > 0)
+        result = await db.users.find_one_and_update(
+            {"id": current_user.id, "query_credits": {"$gt": 0}},
+            {"$inc": {"query_credits": -1}},
+            return_document=False,
         )
-    await db.credit_txns.insert_one({
-        "id": str(uuid.uuid4()),
-        "user_id": current_user.id,
-        "delta": -1,
-        "reason": "analyze",
-        "meta": {"marka": data.marka, "model": data.model, "yil": data.yil},
-        "created_at": datetime.now(timezone.utc).isoformat(),
-    })
+        if not result:
+            raise HTTPException(
+                status_code=402,
+                detail={
+                    "code": "insufficient_credits",
+                    "message": "Sorgu hakkınız bitti. Reklam izle veya paket satın al.",
+                },
+            )
+        await db.credit_txns.insert_one({
+            "id": str(uuid.uuid4()),
+            "user_id": current_user.id,
+            "delta": -1,
+            "reason": "analyze",
+            "meta": {"marka": data.marka, "model": data.model, "yil": data.yil},
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        })
 
     prompt = f"""Araç bilgileri:
 - Marka: {data.marka}
@@ -495,16 +508,17 @@ async def analyze_vehicle(data: AnalyzeIn, current_user: UserOut = Depends(get_c
     try:
         response = await chat.send_message(UserMessage(text=prompt))
     except Exception as e:
-        # Refund credit on LLM failure
-        await db.users.update_one({"id": current_user.id}, {"$inc": {"query_credits": 1}})
-        await db.credit_txns.insert_one({
-            "id": str(uuid.uuid4()),
-            "user_id": current_user.id,
-            "delta": 1,
-            "reason": "refund_llm_error",
-            "meta": {"error": str(e)[:200]},
-            "created_at": datetime.now(timezone.utc).isoformat(),
-        })
+        # Refund credit on LLM failure (only if we deducted one)
+        if not current_user.is_admin:
+            await db.users.update_one({"id": current_user.id}, {"$inc": {"query_credits": 1}})
+            await db.credit_txns.insert_one({
+                "id": str(uuid.uuid4()),
+                "user_id": current_user.id,
+                "delta": 1,
+                "reason": "refund_llm_error",
+                "meta": {"error": str(e)[:200]},
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            })
         logger.exception("LLM error")
         raise HTTPException(502, f"AI analiz servisi hata verdi: {str(e)}")
 
@@ -514,13 +528,15 @@ async def analyze_vehicle(data: AnalyzeIn, current_user: UserOut = Depends(get_c
     except json.JSONDecodeError:
         match = re.search(r"\{.*\}", raw, re.DOTALL)
         if not match:
-            await db.users.update_one({"id": current_user.id}, {"$inc": {"query_credits": 1}})
+            if not current_user.is_admin:
+                await db.users.update_one({"id": current_user.id}, {"$inc": {"query_credits": 1}})
             logger.error(f"Failed to parse JSON: {raw[:500]}")
             raise HTTPException(502, "AI cevabı ayrıştırılamadı")
         try:
             parsed = json.loads(match.group(0))
         except json.JSONDecodeError:
-            await db.users.update_one({"id": current_user.id}, {"$inc": {"query_credits": 1}})
+            if not current_user.is_admin:
+                await db.users.update_one({"id": current_user.id}, {"$inc": {"query_credits": 1}})
             raise HTTPException(502, "AI cevabı geçersiz JSON")
 
     report = AnalysisReport(
@@ -747,9 +763,109 @@ async def send_chat(report_id: str, data: ChatIn, current_user: UserOut = Depend
     return {"user_msg": user_msg, "reply": ai_msg}
 
 
+# ---------------- Admin Endpoints ----------------
+class CreditAdjustIn(BaseModel):
+    delta: int
+    reason: str = "admin_adjustment"
+
+
+@api_router.get("/admin/stats")
+async def admin_stats(_: UserOut = Depends(get_current_admin)):
+    total_users = await db.users.count_documents({})
+    total_reports = await db.reports.count_documents({})
+    total_favs = await db.favorites.count_documents({})
+    total_chats = await db.chat_messages.count_documents({})
+    stripe_fulfilled = await db.stripe_sessions.count_documents({"fulfilled": True})
+    stripe_revenue_cents = 0
+    async for s in db.stripe_sessions.find({"fulfilled": True}, {"_id": 0, "amount_cents": 1}):
+        stripe_revenue_cents += int(s.get("amount_cents", 0))
+    iap_count = await db.iap_receipts.count_documents({})
+    ad_rewards = await db.ad_rewards.count_documents({})
+
+    # last 7 days analyses
+    from datetime import timedelta as _td
+    week_ago = (datetime.now(timezone.utc) - _td(days=7)).isoformat()
+    week_analyses = await db.reports.count_documents({"created_at": {"$gte": week_ago}})
+
+    return {
+        "total_users": total_users,
+        "total_reports": total_reports,
+        "week_analyses": week_analyses,
+        "total_favorites": total_favs,
+        "total_chats": total_chats,
+        "ad_rewards": ad_rewards,
+        "stripe_fulfilled_count": stripe_fulfilled,
+        "stripe_revenue_usd": round(stripe_revenue_cents / 100.0, 2),
+        "iap_count": iap_count,
+    }
+
+
+@api_router.get("/admin/users")
+async def admin_users(
+    skip: int = 0,
+    limit: int = 50,
+    _: UserOut = Depends(get_current_admin),
+):
+    limit = max(1, min(limit, 200))
+    total = await db.users.count_documents({})
+    cursor = db.users.find({}, {"_id": 0, "password_hash": 0}).sort("created_at", -1).skip(skip).limit(limit)
+    items = []
+    async for u in cursor:
+        report_count = await db.reports.count_documents({"user_id": u["id"]})
+        items.append({
+            "id": u["id"],
+            "email": u["email"],
+            "full_name": u.get("full_name"),
+            "query_credits": int(u.get("query_credits", 0)),
+            "is_admin": bool(u.get("is_admin", False)),
+            "created_at": u.get("created_at"),
+            "report_count": report_count,
+        })
+    return {"total": total, "skip": skip, "limit": limit, "items": items}
+
+
+@api_router.post("/admin/users/{user_id}/credits")
+async def admin_adjust_credits(
+    user_id: str,
+    data: CreditAdjustIn,
+    admin: UserOut = Depends(get_current_admin),
+):
+    user = await db.users.find_one({"id": user_id})
+    if not user:
+        raise HTTPException(404, "Kullanıcı bulunamadı")
+    await db.users.update_one({"id": user_id}, {"$inc": {"query_credits": data.delta}})
+    await db.credit_txns.insert_one({
+        "id": str(uuid.uuid4()),
+        "user_id": user_id,
+        "delta": data.delta,
+        "reason": f"admin:{data.reason}",
+        "meta": {"admin_id": admin.id},
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    })
+    fresh = await db.users.find_one({"id": user_id}, {"_id": 0, "password_hash": 0})
+    return {"ok": True, "user_credits": int(fresh.get("query_credits", 0))}
+
+
+@api_router.get("/admin/txns")
+async def admin_recent_txns(
+    limit: int = 50,
+    _: UserOut = Depends(get_current_admin),
+):
+    limit = max(1, min(limit, 200))
+    cursor = db.credit_txns.find({}, {"_id": 0}).sort("created_at", -1).limit(limit)
+    return {"items": await cursor.to_list(limit)}
+
+
+@api_router.get("/admin/payments")
+async def admin_payments(_: UserOut = Depends(get_current_admin)):
+    stripe_docs = await db.stripe_sessions.find({}, {"_id": 0}).sort("created_at", -1).limit(50).to_list(50)
+    iap_docs = await db.iap_receipts.find({}, {"_id": 0}).sort("created_at", -1).limit(50).to_list(50)
+    return {"stripe": stripe_docs, "iap": iap_docs}
+
+
 @api_router.get("/")
 async def root():
-    return {"message": "OtoEkspertiz AI API", "version": "1.2"}
+    return {"message": "OtoEkspertiz AI API", "version": "1.3"}
 
 
 app.include_router(api_router)
@@ -772,6 +888,27 @@ async def startup_db():
     await db.iap_receipts.create_index("receipt", unique=True)
     await db.stripe_sessions.create_index("session_id", unique=True)
     await db.chat_messages.create_index([("report_id", 1), ("created_at", 1)])
+    # Idempotent admin seeding
+    if ADMIN_EMAIL and ADMIN_PASSWORD:
+        existing = await db.users.find_one({"email": ADMIN_EMAIL})
+        if existing:
+            update = {"$set": {"is_admin": True}}
+            if ADMIN_RESET_PASSWORD:
+                update["$set"]["password_hash"] = hash_password(ADMIN_PASSWORD)
+            await db.users.update_one({"id": existing["id"]}, update)
+            logger.info(f"Admin ensured: {ADMIN_EMAIL}")
+        else:
+            admin_id = str(uuid.uuid4())
+            await db.users.insert_one({
+                "id": admin_id,
+                "email": ADMIN_EMAIL,
+                "full_name": "Admin",
+                "password_hash": hash_password(ADMIN_PASSWORD),
+                "query_credits": 0,
+                "is_admin": True,
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            })
+            logger.info(f"Admin seeded: {ADMIN_EMAIL}")
 
 
 @app.on_event("shutdown")

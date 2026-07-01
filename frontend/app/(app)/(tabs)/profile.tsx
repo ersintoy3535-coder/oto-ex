@@ -97,7 +97,23 @@ export default function ProfileScreen() {
 
       <View style={styles.section}>
         <Text style={styles.sectionLabel}>UYGULAMA</Text>
-        <InfoRow icon="information-circle" title="Sürüm" value="1.1.0" colors={colors} styles={styles} />
+        {user?.is_admin && (
+          <Pressable
+            testID="admin-panel-btn"
+            onPress={() => router.push('/(app)/admin')}
+            style={({ pressed }) => [styles.row, styles.adminRow, pressed && { opacity: 0.75 }]}
+          >
+            <View style={[styles.iconWrap, { backgroundColor: colors.brand }]}>
+              <Ionicons name="shield-checkmark" size={18} color={colors.onBrandPrimary} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.rowTitle}>ADMIN PANEL</Text>
+              <Text style={styles.rowValue}>İstatistikler, kullanıcılar, ödemeler</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={colors.brand} />
+          </Pressable>
+        )}
+        <InfoRow icon="information-circle" title="Sürüm" value="1.3.0" colors={colors} styles={styles} />
         <InfoRow icon="sparkles" title="AI Modeli" value="Gemini 2.5 Pro" colors={colors} styles={styles} />
       </View>
 
@@ -179,6 +195,7 @@ const createStyles = (colors: ThemeColors) =>
       gap: spacing.md,
     },
     themeRowActive: { borderColor: colors.brand, backgroundColor: colors.brandTertiary },
+    adminRow: { borderColor: colors.brand, backgroundColor: colors.brandTertiary },
     swatchWrap: { flexDirection: 'row', width: 48, height: 40, position: 'relative' },
     swatch: { width: 28, height: 28, borderRadius: 8, borderWidth: 1 },
     swatchAccent: { position: 'absolute', left: 18, top: 8, width: 22, height: 22 },

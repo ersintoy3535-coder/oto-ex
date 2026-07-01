@@ -65,6 +65,18 @@ Poppins Regular / Medium / SemiBold, bundled from `/assets/fonts/`.
 - `EMERGENT_LLM_KEY`, `JWT_SECRET`, `MONGO_URL`, `DB_NAME`
 - `STRIPE_API_KEY=sk_test_emergent` (routed through emergent proxy)
 - `FREE_CREDITS_ON_SIGNUP=3`
+- `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `ADMIN_RESET_PASSWORD` (admin seeding, idempotent on startup)
+
+## Admin (v1.3)
+- `is_admin` flag on user document (auto-seeded from env on startup)
+- Admin bypasses credit deduction in `/api/analyze` (unlimited queries)
+- Admin panel screen `/(app)/admin` with 4 tabs:
+  - **İstatistik:** total users, reports, 7-day analyses, chats, ad rewards, Stripe/IAP counts + revenue
+  - **Kullanıcılar:** paginated user list with credit adjust modal
+  - **Hareketler:** recent credit transactions (analyze, refund, admin adjust, purchase)
+  - **Ödemeler:** recent Stripe sessions + IAP receipts
+- Endpoints: `GET /api/admin/{stats,users,txns,payments}`, `POST /api/admin/users/{id}/credits`
+- Frontend shows "ADMIN PANEL" row in Profile only when `user.is_admin === true`
 
 ## Native swap guide
 See `/app/frontend/docs/native-integrations.md` for real AdMob + IAP integration steps after producing a native build.

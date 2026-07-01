@@ -30,7 +30,7 @@ export default function ProfileScreen() {
       <View style={styles.section}>
         <Text style={styles.sectionLabel}>UYGULAMA</Text>
         <InfoRow icon="information-circle" title="Sürüm" value="1.0.0" />
-        <InfoRow icon="sparkles" title="AI Modeli" value="Gemini 3.1 Pro" />
+        <InfoRow icon="sparkles" title="AI Modeli" value="Gemini 2.5 Pro" />
         <InfoRow icon="shield-checkmark" title="Analiz Kapsamı" value="Kronik sorunlar · Piyasa fiyatı · Bakım maliyeti" multiline />
       </View>
 

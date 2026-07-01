@@ -6,14 +6,16 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { useIconFonts } from '@/src/hooks/use-icon-fonts';
+import { usePoppinsFonts } from '@/src/hooks/use-poppins';
 import { AuthProvider, useAuth } from '@/src/auth/AuthContext';
-import { colors } from '@/src/theme/tokens';
+import { ThemeProvider, useTheme } from '@/src/theme/ThemeContext';
 
 LogBox.ignoreAllLogs(true);
 SplashScreen.preventAutoHideAsync();
 
 function RootNav() {
   const { token, loading } = useAuth();
+  const { colors } = useTheme();
   const segments = useSegments();
   const router = useRouter();
 
@@ -44,22 +46,32 @@ function RootNav() {
   );
 }
 
+function ThemedStatusBar() {
+  const { colors } = useTheme();
+  return <StatusBar barStyle="light-content" backgroundColor={colors.surface} />;
+}
+
 export default function RootLayout() {
-  const [loaded, error] = useIconFonts();
+  const [iconsLoaded, iconsError] = useIconFonts();
+  const [poppinsLoaded, poppinsError] = usePoppinsFonts();
+
+  const ready = (iconsLoaded || iconsError) && (poppinsLoaded || poppinsError);
 
   useEffect(() => {
-    if (loaded || error) SplashScreen.hideAsync();
-  }, [loaded, error]);
+    if (ready) SplashScreen.hideAsync();
+  }, [ready]);
 
-  if (!loaded && !error) return null;
+  if (!ready) return null;
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
-        <StatusBar barStyle="light-content" backgroundColor={colors.surface} />
-        <AuthProvider>
-          <RootNav />
-        </AuthProvider>
+        <ThemeProvider>
+          <ThemedStatusBar />
+          <AuthProvider>
+            <RootNav />
+          </AuthProvider>
+        </ThemeProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );

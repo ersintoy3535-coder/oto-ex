@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Modal,
@@ -13,7 +13,8 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { apiFetch, useAuth } from '@/src/auth/AuthContext';
-import { colors, radius, spacing } from '@/src/theme/tokens';
+import { useTheme } from '@/src/theme/ThemeContext';
+import { fonts, radius, spacing, ThemeColors } from '@/src/theme/tokens';
 
 type Report = { id: string; marka: string; model: string; yil: number; guven_skoru: number };
 
@@ -24,10 +25,13 @@ type CompareResult = {
 };
 
 const fmtTL = (n: number) => new Intl.NumberFormat('tr-TR').format(Math.round(n)) + ' ₺';
-const scoreColor = (s: number) => (s >= 70 ? colors.success : s >= 45 ? colors.warning : colors.error);
+const scoreColor = (colors: ThemeColors, s: number) =>
+  s >= 70 ? colors.success : s >= 45 ? colors.warning : colors.error;
 
 export default function CompareScreen() {
   const { token } = useAuth();
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const [history, setHistory] = useState<Report[]>([]);
   const [loading, setLoading] = useState(true);
   const [pick1, setPick1] = useState<Report | null>(null);
@@ -95,9 +99,9 @@ export default function CompareScreen() {
         </View>
 
         <View style={styles.pickerRow}>
-          <PickerCard label="1. ARAÇ" pick={pick1} onPress={() => openPicker(1)} testID="pick-1" />
+          <PickerCard label="1. ARAÇ" pick={pick1} onPress={() => openPicker(1)} testID="pick-1" styles={styles} colors={colors} />
           <View style={styles.vs}><Text style={styles.vsText}>VS</Text></View>
-          <PickerCard label="2. ARAÇ" pick={pick2} onPress={() => openPicker(2)} testID="pick-2" />
+          <PickerCard label="2. ARAÇ" pick={pick2} onPress={() => openPicker(2)} testID="pick-2" styles={styles} colors={colors} />
         </View>
 
         {err && <Text style={styles.errText}>{err}</Text>}
@@ -118,7 +122,7 @@ export default function CompareScreen() {
           )}
         </Pressable>
 
-        {result && <ResultView r={result} />}
+        {result && <ResultView r={result} styles={styles} colors={colors} />}
 
         {loading && (
           <View style={{ padding: spacing.xl }}>
@@ -143,8 +147,8 @@ export default function CompareScreen() {
                     <Text style={styles.marka}>{r.marka} {r.model}</Text>
                     <Text style={styles.yil}>{r.yil}</Text>
                   </View>
-                  <View style={[styles.scoreBadge, { borderColor: scoreColor(r.guven_skoru) }]}>
-                    <Text style={[styles.scoreValue, { color: scoreColor(r.guven_skoru) }]}>{r.guven_skoru}</Text>
+                  <View style={[styles.scoreBadge, { borderColor: scoreColor(colors, r.guven_skoru) }]}>
+                    <Text style={[styles.scoreValue, { color: scoreColor(colors, r.guven_skoru) }]}>{r.guven_skoru}</Text>
                   </View>
                 </Pressable>
               ))}
@@ -156,7 +160,7 @@ export default function CompareScreen() {
   );
 }
 
-function PickerCard({ label, pick, onPress, testID }: { label: string; pick: Report | null; onPress: () => void; testID: string }) {
+function PickerCard({ label, pick, onPress, testID, styles, colors }: any) {
   return (
     <Pressable testID={testID} onPress={onPress} style={styles.pickCard}>
       <Text style={styles.pickLabel}>{label}</Text>
@@ -176,8 +180,8 @@ function PickerCard({ label, pick, onPress, testID }: { label: string; pick: Rep
   );
 }
 
-function ResultView({ r }: { r: CompareResult }) {
-  const Row = ({ label, key1, value1, value2, winnerKey, formatter }: any) => {
+function ResultView({ r, styles, colors }: any) {
+  const Row = ({ label, value1, value2, winnerKey, formatter }: any) => {
     const w = r.winners[winnerKey];
     return (
       <View style={styles.compareRow}>
@@ -226,77 +230,78 @@ function ResultView({ r }: { r: CompareResult }) {
   );
 }
 
-const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.surface },
-  header: { padding: spacing.xl, paddingBottom: spacing.md },
-  eyebrow: { color: colors.brandSecondary, fontSize: 11, letterSpacing: 2, marginBottom: spacing.xs, fontWeight: '500' },
-  title: { color: colors.onSurface, fontSize: 30, fontWeight: '500' },
-  sub: { color: colors.onSurfaceSecondary, fontSize: 13, marginTop: spacing.xs },
-  pickerRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingHorizontal: spacing.xl, marginTop: spacing.md },
-  pickCard: {
-    flex: 1,
-    height: 160,
-    backgroundColor: colors.surfaceSecondary,
-    borderColor: colors.border,
-    borderWidth: 1,
-    borderRadius: radius.md,
-    padding: spacing.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 4,
-  },
-  pickLabel: { color: colors.onSurfaceTertiary, fontSize: 10, letterSpacing: 1.4, marginBottom: spacing.xs, fontWeight: '500' },
-  pickPlaceholder: { color: colors.brand, fontSize: 12, marginTop: spacing.xs, fontWeight: '500' },
-  pickMarka: { color: colors.onSurface, fontSize: 15, fontWeight: '500' },
-  pickModel: { color: colors.onSurfaceSecondary, fontSize: 13 },
-  pickYil: { color: colors.brandSecondary, fontSize: 12, marginTop: 2 },
-  vs: { width: 32, alignItems: 'center' },
-  vsText: { color: colors.brand, fontSize: 14, fontWeight: '500', letterSpacing: 1 },
-  primaryBtn: {
-    backgroundColor: colors.brand,
-    marginHorizontal: spacing.xl,
-    marginTop: spacing.lg,
-    borderRadius: radius.md,
-    paddingVertical: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.sm,
-  },
-  primaryBtnText: { color: colors.onBrandPrimary, fontSize: 16, fontWeight: '500' },
-  errText: { color: colors.error, fontSize: 13, paddingHorizontal: spacing.xl, marginTop: spacing.sm },
-  modalWrap: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end' },
-  modalCard: { backgroundColor: colors.surface, borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg, maxHeight: '70%', paddingHorizontal: spacing.xl, paddingTop: spacing.lg, paddingBottom: spacing.xxl, borderTopWidth: 1, borderColor: colors.border },
-  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.md },
-  modalTitle: { color: colors.onSurface, fontSize: 18, fontWeight: '500' },
-  modalItem: {
-    backgroundColor: colors.surfaceSecondary,
-    borderColor: colors.border,
-    borderWidth: 1,
-    borderRadius: radius.md,
-    padding: spacing.md,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    marginBottom: spacing.sm,
-  },
-  marka: { color: colors.onSurface, fontSize: 15, fontWeight: '500' },
-  yil: { color: colors.onSurfaceTertiary, fontSize: 12, marginTop: 2 },
-  scoreBadge: { width: 42, height: 42, borderRadius: radius.pill, borderWidth: 2, alignItems: 'center', justifyContent: 'center' },
-  scoreValue: { fontSize: 14, fontWeight: '500' },
-  resultWrap: { marginTop: spacing.xl, marginHorizontal: spacing.xl },
-  resultHeader: { flexDirection: 'row', marginBottom: spacing.md, gap: spacing.md },
-  resultCol: { flex: 1, backgroundColor: colors.surfaceSecondary, padding: spacing.md, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border },
-  resultMarka: { color: colors.onSurface, fontSize: 14, fontWeight: '500' },
-  resultYil: { color: colors.onSurfaceTertiary, fontSize: 12, marginTop: 2 },
-  compareRow: { flexDirection: 'row', alignItems: 'stretch', borderBottomWidth: 1, borderColor: colors.divider },
-  compareCell: { flex: 1, paddingVertical: spacing.md, alignItems: 'center', justifyContent: 'center' },
-  winnerCell: { backgroundColor: 'rgba(42,157,143,0.10)' },
-  compareVal: { color: colors.onSurface, fontSize: 15 },
-  winnerVal: { color: colors.success, fontWeight: '500' },
-  compareMid: { paddingHorizontal: spacing.sm, alignItems: 'center', justifyContent: 'center', minWidth: 90 },
-  compareLabel: { color: colors.onSurfaceTertiary, fontSize: 10, letterSpacing: 1.2, textAlign: 'center', fontWeight: '500' },
-  adviceBox: { marginTop: spacing.md, backgroundColor: colors.surfaceSecondary, padding: spacing.md, borderRadius: radius.md, borderLeftWidth: 3, borderLeftColor: colors.brandSecondary },
-  adviceLabel: { color: colors.brandSecondary, fontSize: 10, letterSpacing: 1.4, marginBottom: 4, fontWeight: '500' },
-  adviceText: { color: colors.onSurface, fontSize: 13, lineHeight: 18 },
-});
+const createStyles = (colors: ThemeColors) =>
+  StyleSheet.create({
+    safe: { flex: 1, backgroundColor: colors.surface },
+    header: { padding: spacing.xl, paddingBottom: spacing.md },
+    eyebrow: { color: colors.brandSecondary, fontSize: 11, letterSpacing: 2, marginBottom: spacing.xs, fontFamily: fonts.medium },
+    title: { color: colors.onSurface, fontSize: 28, fontFamily: fonts.semibold },
+    sub: { color: colors.onSurfaceSecondary, fontSize: 13, marginTop: spacing.xs, fontFamily: fonts.regular },
+    pickerRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingHorizontal: spacing.xl, marginTop: spacing.md },
+    pickCard: {
+      flex: 1,
+      height: 160,
+      backgroundColor: colors.surfaceSecondary,
+      borderColor: colors.border,
+      borderWidth: 1,
+      borderRadius: radius.md,
+      padding: spacing.md,
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 4,
+    },
+    pickLabel: { color: colors.onSurfaceTertiary, fontSize: 10, letterSpacing: 1.4, marginBottom: spacing.xs, fontFamily: fonts.medium },
+    pickPlaceholder: { color: colors.brand, fontSize: 12, marginTop: spacing.xs, fontFamily: fonts.medium },
+    pickMarka: { color: colors.onSurface, fontSize: 15, fontFamily: fonts.semibold },
+    pickModel: { color: colors.onSurfaceSecondary, fontSize: 13, fontFamily: fonts.regular },
+    pickYil: { color: colors.brandSecondary, fontSize: 12, marginTop: 2, fontFamily: fonts.medium },
+    vs: { width: 32, alignItems: 'center' },
+    vsText: { color: colors.brand, fontSize: 14, letterSpacing: 1, fontFamily: fonts.semibold },
+    primaryBtn: {
+      backgroundColor: colors.brand,
+      marginHorizontal: spacing.xl,
+      marginTop: spacing.lg,
+      borderRadius: radius.md,
+      paddingVertical: 16,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: spacing.sm,
+    },
+    primaryBtnText: { color: colors.onBrandPrimary, fontSize: 16, fontFamily: fonts.semibold },
+    errText: { color: colors.error, fontSize: 13, paddingHorizontal: spacing.xl, marginTop: spacing.sm, fontFamily: fonts.regular },
+    modalWrap: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end' },
+    modalCard: { backgroundColor: colors.surface, borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg, maxHeight: '70%', paddingHorizontal: spacing.xl, paddingTop: spacing.lg, paddingBottom: spacing.xxl, borderTopWidth: 1, borderColor: colors.border },
+    modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.md },
+    modalTitle: { color: colors.onSurface, fontSize: 18, fontFamily: fonts.semibold },
+    modalItem: {
+      backgroundColor: colors.surfaceSecondary,
+      borderColor: colors.border,
+      borderWidth: 1,
+      borderRadius: radius.md,
+      padding: spacing.md,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.md,
+      marginBottom: spacing.sm,
+    },
+    marka: { color: colors.onSurface, fontSize: 15, fontFamily: fonts.semibold },
+    yil: { color: colors.onSurfaceTertiary, fontSize: 12, marginTop: 2, fontFamily: fonts.regular },
+    scoreBadge: { width: 42, height: 42, borderRadius: radius.pill, borderWidth: 2, alignItems: 'center', justifyContent: 'center' },
+    scoreValue: { fontSize: 14, fontFamily: fonts.semibold },
+    resultWrap: { marginTop: spacing.xl, marginHorizontal: spacing.xl },
+    resultHeader: { flexDirection: 'row', marginBottom: spacing.md, gap: spacing.md },
+    resultCol: { flex: 1, backgroundColor: colors.surfaceSecondary, padding: spacing.md, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border },
+    resultMarka: { color: colors.onSurface, fontSize: 14, fontFamily: fonts.semibold },
+    resultYil: { color: colors.onSurfaceTertiary, fontSize: 12, marginTop: 2, fontFamily: fonts.regular },
+    compareRow: { flexDirection: 'row', alignItems: 'stretch', borderBottomWidth: 1, borderColor: colors.divider },
+    compareCell: { flex: 1, paddingVertical: spacing.md, alignItems: 'center', justifyContent: 'center' },
+    winnerCell: { backgroundColor: colors.brandTertiary },
+    compareVal: { color: colors.onSurface, fontSize: 15, fontFamily: fonts.regular },
+    winnerVal: { color: colors.success, fontFamily: fonts.semibold },
+    compareMid: { paddingHorizontal: spacing.sm, alignItems: 'center', justifyContent: 'center', minWidth: 90 },
+    compareLabel: { color: colors.onSurfaceTertiary, fontSize: 10, letterSpacing: 1.2, textAlign: 'center', fontFamily: fonts.medium },
+    adviceBox: { marginTop: spacing.md, backgroundColor: colors.surfaceSecondary, padding: spacing.md, borderRadius: radius.md, borderLeftWidth: 3, borderLeftColor: colors.brandSecondary },
+    adviceLabel: { color: colors.brandSecondary, fontSize: 10, letterSpacing: 1.4, marginBottom: 4, fontFamily: fonts.medium },
+    adviceText: { color: colors.onSurface, fontSize: 13, lineHeight: 18, fontFamily: fonts.regular },
+  });

@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -15,11 +15,14 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { apiFetch, useAuth } from '@/src/auth/AuthContext';
-import { colors, radius, spacing } from '@/src/theme/tokens';
+import { useTheme } from '@/src/theme/ThemeContext';
+import { fonts, radius, spacing, ThemeColors } from '@/src/theme/tokens';
 
 export default function RegisterScreen() {
   const router = useRouter();
   const { signIn } = useAuth();
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -121,33 +124,35 @@ export default function RegisterScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.surface },
-  back: { alignSelf: 'flex-start', padding: spacing.sm },
-  eyebrow: { color: colors.brandSecondary, fontSize: 11, letterSpacing: 2, marginBottom: spacing.sm, fontWeight: '500' },
-  title: { color: colors.onSurface, fontSize: 36, fontWeight: '500', marginBottom: spacing.sm },
-  sub: { color: colors.onSurfaceSecondary, fontSize: 13 },
-  input: {
-    backgroundColor: colors.surfaceSecondary,
-    borderColor: colors.border,
-    borderWidth: 1,
-    borderRadius: radius.md,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: 14,
-    color: colors.onSurface,
-    fontSize: 15,
-    marginBottom: spacing.md,
-  },
-  primaryBtn: {
-    backgroundColor: colors.brand,
-    borderRadius: radius.md,
-    paddingVertical: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: spacing.sm,
-  },
-  primaryBtnText: { color: colors.onBrandPrimary, fontSize: 16, fontWeight: '500' },
-  secondaryBtn: { paddingVertical: 14, alignItems: 'center' },
-  secondaryBtnText: { color: colors.onSurfaceSecondary, fontSize: 13 },
-  errText: { color: colors.error, fontSize: 13, marginTop: spacing.xs, marginBottom: spacing.sm },
-});
+const createStyles = (colors: ThemeColors) =>
+  StyleSheet.create({
+    safe: { flex: 1, backgroundColor: colors.surface },
+    back: { alignSelf: 'flex-start', padding: spacing.sm },
+    eyebrow: { color: colors.brandSecondary, fontSize: 11, letterSpacing: 2, marginBottom: spacing.sm, fontFamily: fonts.medium },
+    title: { color: colors.onSurface, fontSize: 34, marginBottom: spacing.sm, fontFamily: fonts.semibold },
+    sub: { color: colors.onSurfaceSecondary, fontSize: 13, fontFamily: fonts.regular },
+    input: {
+      backgroundColor: colors.surfaceSecondary,
+      borderColor: colors.border,
+      borderWidth: 1,
+      borderRadius: radius.md,
+      paddingHorizontal: spacing.lg,
+      paddingVertical: 14,
+      color: colors.onSurface,
+      fontSize: 15,
+      marginBottom: spacing.md,
+      fontFamily: fonts.regular,
+    },
+    primaryBtn: {
+      backgroundColor: colors.brand,
+      borderRadius: radius.md,
+      paddingVertical: 16,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginTop: spacing.sm,
+    },
+    primaryBtnText: { color: colors.onBrandPrimary, fontSize: 16, fontFamily: fonts.semibold },
+    secondaryBtn: { paddingVertical: 14, alignItems: 'center' },
+    secondaryBtnText: { color: colors.onSurfaceSecondary, fontSize: 13, fontFamily: fonts.regular },
+    errText: { color: colors.error, fontSize: 13, marginTop: spacing.xs, marginBottom: spacing.sm, fontFamily: fonts.regular },
+  });

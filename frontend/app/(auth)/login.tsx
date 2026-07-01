@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -17,13 +17,16 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { apiFetch, useAuth } from '@/src/auth/AuthContext';
-import { colors, radius, spacing } from '@/src/theme/tokens';
+import { useTheme } from '@/src/theme/ThemeContext';
+import { fonts, radius, spacing, ThemeColors } from '@/src/theme/tokens';
 
 const HERO = 'https://images.unsplash.com/photo-1558678542-d52f29185251?crop=entropy&cs=srgb&fm=jpg&q=85&w=940';
 
 export default function LoginScreen() {
   const router = useRouter();
   const { signIn } = useAuth();
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -57,7 +60,7 @@ export default function LoginScreen() {
           <View style={styles.hero}>
             <Image source={{ uri: HERO }} style={StyleSheet.absoluteFillObject} contentFit="cover" />
             <LinearGradient
-              colors={['rgba(13,14,17,0.3)', 'rgba(13,14,17,0.9)', colors.surface]}
+              colors={['rgba(10,22,40,0.3)', 'rgba(10,22,40,0.9)', colors.surface]}
               style={StyleSheet.absoluteFillObject}
             />
             <View style={styles.heroContent}>
@@ -116,36 +119,38 @@ export default function LoginScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.surface },
-  hero: { height: 280, justifyContent: 'flex-end' },
-  heroContent: { padding: spacing.xl },
-  eyebrow: { color: colors.brandSecondary, fontSize: 11, letterSpacing: 2, marginBottom: spacing.sm, fontWeight: '500' },
-  title: { color: colors.onSurface, fontSize: 40, fontWeight: '500', marginBottom: spacing.sm },
-  sub: { color: colors.onSurfaceSecondary, fontSize: 13 },
-  form: { padding: spacing.xl, gap: spacing.md },
-  input: {
-    backgroundColor: colors.surfaceSecondary,
-    borderColor: colors.border,
-    borderWidth: 1,
-    borderRadius: radius.md,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: 14,
-    color: colors.onSurface,
-    fontSize: 15,
-  },
-  primaryBtn: {
-    backgroundColor: colors.brand,
-    borderRadius: radius.md,
-    paddingVertical: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.sm,
-    marginTop: spacing.sm,
-  },
-  primaryBtnText: { color: colors.onBrandPrimary, fontSize: 16, fontWeight: '500' },
-  secondaryBtn: { paddingVertical: 14, alignItems: 'center' },
-  secondaryBtnText: { color: colors.onSurfaceSecondary, fontSize: 13 },
-  errText: { color: colors.error, fontSize: 13 },
-});
+const createStyles = (colors: ThemeColors) =>
+  StyleSheet.create({
+    safe: { flex: 1, backgroundColor: colors.surface },
+    hero: { height: 280, justifyContent: 'flex-end' },
+    heroContent: { padding: spacing.xl },
+    eyebrow: { color: colors.brandSecondary, fontSize: 11, letterSpacing: 2, marginBottom: spacing.sm, fontFamily: fonts.medium },
+    title: { color: colors.onSurface, fontSize: 38, marginBottom: spacing.sm, fontFamily: fonts.semibold },
+    sub: { color: colors.onSurfaceSecondary, fontSize: 13, fontFamily: fonts.regular },
+    form: { padding: spacing.xl, gap: spacing.md },
+    input: {
+      backgroundColor: colors.surfaceSecondary,
+      borderColor: colors.border,
+      borderWidth: 1,
+      borderRadius: radius.md,
+      paddingHorizontal: spacing.lg,
+      paddingVertical: 14,
+      color: colors.onSurface,
+      fontSize: 15,
+      fontFamily: fonts.regular,
+    },
+    primaryBtn: {
+      backgroundColor: colors.brand,
+      borderRadius: radius.md,
+      paddingVertical: 16,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: spacing.sm,
+      marginTop: spacing.sm,
+    },
+    primaryBtnText: { color: colors.onBrandPrimary, fontSize: 16, fontFamily: fonts.semibold },
+    secondaryBtn: { paddingVertical: 14, alignItems: 'center' },
+    secondaryBtnText: { color: colors.onSurfaceSecondary, fontSize: 13, fontFamily: fonts.regular },
+    errText: { color: colors.error, fontSize: 13, fontFamily: fonts.regular },
+  });

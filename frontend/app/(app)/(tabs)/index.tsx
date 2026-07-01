@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -17,7 +17,8 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { apiFetch, useAuth } from '@/src/auth/AuthContext';
-import { colors, radius, spacing } from '@/src/theme/tokens';
+import { useTheme } from '@/src/theme/ThemeContext';
+import { fonts, radius, spacing, ThemeColors } from '@/src/theme/tokens';
 
 const HERO = 'https://images.pexels.com/photos/37532808/pexels-photo-37532808.png?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940';
 
@@ -32,6 +33,8 @@ const POPULAR = [
 
 export default function SearchScreen() {
   const { token } = useAuth();
+  const { colors, themeName } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const router = useRouter();
   const [marka, setMarka] = useState('');
   const [model, setModel] = useState('');
@@ -40,6 +43,9 @@ export default function SearchScreen() {
   const [fiyat, setFiyat] = useState('');
   const [loading, setLoading] = useState(false);
   const [errMsg, setErrMsg] = useState<string | null>(null);
+
+  const gradientEnd = themeName === 'navy' ? 'rgba(10,22,40,0.85)' : 'rgba(13,14,17,0.85)';
+  const gradientMid = themeName === 'navy' ? 'rgba(10,22,40,0.2)' : 'rgba(13,14,17,0.2)';
 
   const analyze = async () => {
     setErrMsg(null);
@@ -84,15 +90,12 @@ export default function SearchScreen() {
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        style={{ flex: 1 }}
-      >
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
         <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
           <View style={styles.hero}>
             <Image source={{ uri: HERO }} style={StyleSheet.absoluteFillObject} contentFit="cover" />
             <LinearGradient
-              colors={['rgba(13,14,17,0.2)', 'rgba(13,14,17,0.85)', colors.surface]}
+              colors={[gradientMid, gradientEnd, colors.surface]}
               style={StyleSheet.absoluteFillObject}
             />
             <View style={styles.heroContent}>
@@ -199,49 +202,51 @@ export default function SearchScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.surface },
-  scroll: { paddingBottom: spacing.xxxl },
-  hero: { height: 260, position: 'relative', justifyContent: 'flex-end' },
-  heroContent: { padding: spacing.xl },
-  eyebrow: { color: colors.brandSecondary, fontSize: 11, letterSpacing: 2, marginBottom: spacing.sm, fontWeight: '500' },
-  title: { color: colors.onSurface, fontSize: 42, lineHeight: 44, fontWeight: '500', marginBottom: spacing.md },
-  sub: { color: colors.onSurfaceSecondary, fontSize: 13, lineHeight: 18 },
-  form: { padding: spacing.xl, gap: spacing.md },
-  sectionLabel: { color: colors.onSurfaceTertiary, fontSize: 11, letterSpacing: 1.6, marginBottom: spacing.sm, fontWeight: '500' },
-  input: {
-    backgroundColor: colors.surfaceSecondary,
-    borderColor: colors.border,
-    borderWidth: 1,
-    borderRadius: radius.md,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: 14,
-    color: colors.onSurface,
-    fontSize: 15,
-  },
-  primaryBtn: {
-    backgroundColor: colors.brand,
-    borderRadius: radius.md,
-    paddingVertical: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.sm,
-    marginTop: spacing.sm,
-  },
-  primaryBtnText: { color: colors.onBrandPrimary, fontSize: 16, fontWeight: '500', letterSpacing: 0.4 },
-  errText: { color: colors.error, fontSize: 13 },
-  popularWrap: { paddingHorizontal: spacing.xl, marginTop: spacing.md },
-  popularGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md },
-  popCard: {
-    flexBasis: '47%',
-    backgroundColor: colors.surfaceSecondary,
-    borderColor: colors.border,
-    borderWidth: 1,
-    borderRadius: radius.md,
-    padding: spacing.lg,
-    gap: 4,
-  },
-  popMarka: { color: colors.onSurface, fontSize: 15, fontWeight: '500', marginTop: spacing.xs },
-  popModel: { color: colors.onSurfaceTertiary, fontSize: 12 },
-});
+const createStyles = (colors: ThemeColors) =>
+  StyleSheet.create({
+    safe: { flex: 1, backgroundColor: colors.surface },
+    scroll: { paddingBottom: spacing.xxxl },
+    hero: { height: 260, position: 'relative', justifyContent: 'flex-end' },
+    heroContent: { padding: spacing.xl },
+    eyebrow: { color: colors.brandSecondary, fontSize: 11, letterSpacing: 2, marginBottom: spacing.sm, fontFamily: fonts.medium },
+    title: { color: colors.onSurface, fontSize: 40, lineHeight: 44, marginBottom: spacing.md, fontFamily: fonts.semibold },
+    sub: { color: colors.onSurfaceSecondary, fontSize: 13, lineHeight: 18, fontFamily: fonts.regular },
+    form: { padding: spacing.xl, gap: spacing.md },
+    sectionLabel: { color: colors.onSurfaceTertiary, fontSize: 11, letterSpacing: 1.6, marginBottom: spacing.sm, fontFamily: fonts.medium },
+    input: {
+      backgroundColor: colors.surfaceSecondary,
+      borderColor: colors.border,
+      borderWidth: 1,
+      borderRadius: radius.md,
+      paddingHorizontal: spacing.lg,
+      paddingVertical: 14,
+      color: colors.onSurface,
+      fontSize: 15,
+      fontFamily: fonts.regular,
+    },
+    primaryBtn: {
+      backgroundColor: colors.brand,
+      borderRadius: radius.md,
+      paddingVertical: 16,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: spacing.sm,
+      marginTop: spacing.sm,
+    },
+    primaryBtnText: { color: colors.onBrandPrimary, fontSize: 16, letterSpacing: 0.4, fontFamily: fonts.semibold },
+    errText: { color: colors.error, fontSize: 13, fontFamily: fonts.regular },
+    popularWrap: { paddingHorizontal: spacing.xl, marginTop: spacing.md },
+    popularGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md },
+    popCard: {
+      flexBasis: '47%',
+      backgroundColor: colors.surfaceSecondary,
+      borderColor: colors.border,
+      borderWidth: 1,
+      borderRadius: radius.md,
+      padding: spacing.lg,
+      gap: 4,
+    },
+    popMarka: { color: colors.onSurface, fontSize: 15, marginTop: spacing.xs, fontFamily: fonts.medium },
+    popModel: { color: colors.onSurfaceTertiary, fontSize: 12, fontFamily: fonts.regular },
+  });

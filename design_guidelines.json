@@ -1,0 +1,166 @@
+{
+  "app_name": "OtoEkspertiz AI",
+  "personality": "7 Dark-First Utility DARK",
+  "personality_one_liner": "A sleek, command-center diagnostic interface that turns mechanical data into authoritative, high-contrast visual analytics.",
+  "color": {
+    "surface": "#0D0E11",
+    "onSurface": "#F3F4F6",
+    "surfaceSecondary": "#16181D",
+    "onSurfaceSecondary": "#D1D5DB",
+    "surfaceTertiary": "#1F2229",
+    "onSurfaceTertiary": "#9CA3AF",
+    "surfaceInverse": "#F3F4F6",
+    "onSurfaceInverse": "#0D0E11",
+    "brand": "#E63946",
+    "brandPrimary": "#E63946",
+    "onBrandPrimary": "#FFFFFF",
+    "brandSecondary": "#F4A261",
+    "onBrandSecondary": "#0D0E11",
+    "brandTertiary": "#311417",
+    "onBrandTertiary": "#E63946",
+    "success": "#2A9D8F",
+    "onSuccess": "#FFFFFF",
+    "warning": "#F4A261",
+    "onWarning": "#0D0E11",
+    "error": "#E63946",
+    "onError": "#FFFFFF",
+    "info": "#8D99AE",
+    "onInfo": "#FFFFFF",
+    "border": "#2D313A",
+    "borderStrong": "#4B5563",
+    "divider": "#1F2229"
+  },
+  "typography": {
+    "displayFontFamily": "Barlow Condensed",
+    "textFontFamily": "Manrope",
+    "scale": {
+      "sm": 12,
+      "base": 14,
+      "lg": 16,
+      "xl": 20,
+      "2xl": 24
+    }
+  },
+  "spacing": {
+    "rule": "Handle spacing tightly for a command-center feel. Use md for main padding, sm between dense metrics. Ensure hit areas are 44pt.",
+    "xs": 4,
+    "sm": 8,
+    "md": 12,
+    "lg": 16,
+    "xl": 24,
+    "2xl": 32,
+    "3xl": 48
+  },
+  "radius_tokens": {
+    "sm": 6,
+    "md": 12,
+    "lg": 20,
+    "pill": 999
+  },
+  "shadow_tier": "0",
+  "navigation": "bottom_tabs",
+  "icon_set": "Phosphor",
+  "glassmorphism": {
+    "enabled": "false",
+    "do's": ["Use solid surfaceSecondary and dividers for high-information density clarity instead of blur"],
+    "dont's": ["Do not use blur on dashboards or dev-tool like dense data screens"]
+  },
+  "platform_libraries": {
+    "glass": {
+      "ios": "expo-glass-effect",
+      "android": "expo-blur",
+      "low_end_android_fallback": "solid surfaceSecondary"
+    },
+    "image": "expo-image",
+    "blur": "expo-blur",
+    "bottom_sheet": "@gorhom/bottom-sheet",
+    "animation": "react-native-reanimated",
+    "gesture": "react-native-gesture-handler"
+  },
+  "screens": [
+    {
+      "name": "Auth",
+      "purpose": "Log in or register for an account.",
+      "states": {
+        "loading": "Spinner over carbon fiber texture background.",
+        "empty": "N/A",
+        "error": "Toast with readable red text over surfaceSecondary."
+      },
+      "layout": "Hero image of cinematic dark sports car with top-down gradient scrim. Single-column input fields with floating labels above. Primary CTA sticky at bottom of KeyboardAvoidingView."
+    },
+    {
+      "name": "Home / Search",
+      "purpose": "Select Marka (Brand), Model, and Yıl (Year) to generate an AI analysis.",
+      "states": {
+        "loading": "Centered mechanical scanner animation.",
+        "empty": "Illustrative engine prompt: 'Analiz edilecek aracı seçin'.",
+        "error": "Araç bulunamadı (Car not found) message with retry button."
+      },
+      "layout": "Stacked modular layout. Large display typography for 'OtoEkspertiz AI'. Segmented controls or solid input fields for Brand, Model, Year selection. Search button large, brandPrimary, sticky at bottom."
+    },
+    {
+      "name": "Analysis Report",
+      "purpose": "Detailed AI diagnostic report with scores, chronic issues, fuel, and costs.",
+      "states": {
+        "loading": "Skeleton loaders mimicking stat bars and progress rings.",
+        "empty": "N/A",
+        "error": "Analiz başarısız (Analysis failed) with retry button."
+      },
+      "layout": "Live operational surface. Hero banner using car engine image with vertical gradient scrim. Dynamic 'Araç Güven Skoru' (Vehicle Trust Score) using large Barlow Condensed font. Collapsible cards with traffic-light indicators (success/warning/error) for Mekanik, Elektrik, Kaporta. Modular stat bars for yakıt tüketimi (fuel) and piyasa fiyatı (market price). Sticky CTA to 'Favorilere Ekle' or 'Karşılaştır'."
+    },
+    {
+      "name": "Compare (Karşılaştırma)",
+      "purpose": "Side-by-side comparison of 2 vehicles.",
+      "states": {
+        "loading": "Split screen skeleton loader.",
+        "empty": "Split layout asking to '2. Aracı Seçin' (Select 2nd car).",
+        "error": "Karşılaştırma hatası (Comparison error) message."
+      },
+      "layout": "Split-panel layout. Two columns side-by-side with synchronized scrolling. Use dividers over shadows. Large numerical comparison highlighting the 'winner' of each spec (yakıt, fiyat, bakım maliyeti) using success colors."
+    },
+    {
+      "name": "Favorites / History",
+      "purpose": "List of previously analyzed and saved vehicles.",
+      "states": {
+        "loading": "List skeleton.",
+        "empty": "Icon of a garage + 'Henüz araç kaydetmediniz' + primary CTA to Search.",
+        "error": "Liste yüklenemedi message."
+      },
+      "layout": "Single column card list. Each card has a subtle brandTertiary tint with the car's model/year and its Trust Score prominently displayed. Swipe-to-delete gesture."
+    },
+    {
+      "name": "Profile",
+      "purpose": "User settings, account info, and logout.",
+      "states": {
+        "loading": "Spinner.",
+        "empty": "N/A",
+        "error": "N/A"
+      },
+      "layout": "List of settings rows. Each row uses a tinted icon container (brandTertiary rounded square). Clean, functional typography."
+    }
+  ],
+  "images": {
+    "hero_sports_car": {
+      "url": "https://images.pexels.com/photos/37532808/pexels-photo-37532808.png?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+      "alt": "Luxury sports car in shadows of a modern garage space"
+    },
+    "hero_engine_mechanics": {
+      "url": "https://images.unsplash.com/photo-1558678542-d52f29185251?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxNzV8MHwxfHNlYXJjaHwxfHxjYXIlMjBlbmdpbmUlMjBtZWNoYW5pY3MlMjBkYXJrfGVufDB8fHx8MTc4MjkzODA1MHww&ixlib=rb-4.1.0&q=85",
+      "alt": "Vehicle engine bay closeup in dark lighting"
+    },
+    "background_texture": {
+      "url": "https://images.unsplash.com/photo-1647546656105-c6a9cfa6f0fd?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAxODF8MHwxfHNlYXJjaHwxfHxjYXJib24lMjBmaWJlciUyMHRleHR1cmV8ZW58MHx8fGJsYWNrfDE3ODI5MzgwNDl8MA&ixlib=rb-4.1.0&q=85",
+      "alt": "Dark carbon fiber texture for deep backgrounds"
+    }
+  },
+  "instructions_to_main_agent": [
+    "Strictly follow the NO BLUES color rule. Use the defined Ember Red (#E63946) and Warning Amber (#F4A261) for accents.",
+    "Implement the UI as a Dark-First Utility (Personality 7) concept: prioritize fast scanning, hard dividers over shadows, and large condensed typography (Barlow Condensed) for data/scores.",
+    "Text weights must never exceed 500. Use font sizes to establish hierarchy instead of bold text.",
+    "Every image used as a background MUST have a top-down vertical gradient scrim (transparent to surfaceInverse) to guarantee text contrast. Ensure opacity reaches at least 70% at the text level.",
+    "Ensure safe area is strictly respected at screen roots. No content should hide beneath notches or home indicators.",
+    "The Compare screen must use a split-panel layout (two parallel columns) for direct visual contrast of metrics. Make sure the winning metric stands out using the success color.",
+    "For the Analysis Report, structure the chronic issues into clear traffic-light indicator cards (green/yellow/red) based on severity, rather than text-heavy paragraphs.",
+    "Maintain the Turkish UI language across all static texts, placeholders, and buttons as per the problem statement."
+  ]
+}

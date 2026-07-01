@@ -4,13 +4,15 @@ import { useCallback, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { apiFetch, useAuth } from '@/src/auth/AuthContext';
+import { useI18n, LANGUAGES } from '@/src/i18n/I18nContext';
+import { useAuth, apiFetch } from '@/src/auth/AuthContext';
 import { useTheme } from '@/src/theme/ThemeContext';
 import { fonts, radius, spacing, ThemeColors, ThemeName } from '@/src/theme/tokens';
 
 export default function ProfileScreen() {
   const { user, signOut, token } = useAuth();
   const { colors, themeName, setTheme } = useTheme();
+  const { lang, setLang, t } = useI18n();
   const router = useRouter();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const [credits, setCredits] = useState<number | null>(null);
@@ -67,7 +69,27 @@ export default function ProfileScreen() {
       </Pressable>
 
       <View style={styles.section}>
-        <Text style={styles.sectionLabel}>TEMA</Text>
+        <Text style={styles.sectionLabel}>{t('profile.language')}</Text>
+        <View style={styles.langGrid}>
+          {LANGUAGES.map((l) => {
+            const active = lang === l.code;
+            return (
+              <Pressable
+                key={l.code}
+                testID={`lang-${l.code}`}
+                onPress={() => setLang(l.code)}
+                style={[styles.langChip, active && styles.langChipActive]}
+              >
+                <Text style={styles.langFlag}>{l.flag}</Text>
+                <Text style={[styles.langLabel, active && styles.langLabelActive]}>{l.label}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      </View>
+
+      <View style={styles.section}>
+        <Text style={styles.sectionLabel}>{t('profile.theme')}</Text>
         {themeOptions.map((opt) => {
           const active = themeName === opt.key;
           return (
@@ -196,6 +218,17 @@ const createStyles = (colors: ThemeColors) =>
     },
     themeRowActive: { borderColor: colors.brand, backgroundColor: colors.brandTertiary },
     adminRow: { borderColor: colors.brand, backgroundColor: colors.brandTertiary },
+    langGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+    langChip: {
+      flexBasis: '30%', flexGrow: 1,
+      flexDirection: 'row', alignItems: 'center', gap: spacing.xs,
+      backgroundColor: colors.surfaceSecondary, borderColor: colors.border, borderWidth: 1,
+      borderRadius: radius.md, paddingHorizontal: spacing.md, paddingVertical: 10,
+    },
+    langChipActive: { borderColor: colors.brand, backgroundColor: colors.brandTertiary },
+    langFlag: { fontSize: 18 },
+    langLabel: { color: colors.onSurfaceSecondary, fontSize: 13, fontFamily: fonts.medium },
+    langLabelActive: { color: colors.brand, fontFamily: fonts.semibold },
     swatchWrap: { flexDirection: 'row', width: 48, height: 40, position: 'relative' },
     swatch: { width: 28, height: 28, borderRadius: 8, borderWidth: 1 },
     swatchAccent: { position: 'absolute', left: 18, top: 8, width: 22, height: 22 },

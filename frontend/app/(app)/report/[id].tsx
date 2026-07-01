@@ -252,13 +252,140 @@ export default function ReportScreen() {
               <Text style={styles.statSub}>Aylık ~ {fmtTL(report.aylik_yakit_tahmini_tl)}</Text>
             </View>
           </View>
-          {report.fiyat_yorumu && (
+          {!!report.fiyat_yorumu && (
             <View style={styles.priceCommentCard}>
               <Ionicons name="information-circle" size={18} color={colors.brandSecondary} />
               <Text style={styles.priceCommentText}>{report.fiyat_yorumu}</Text>
             </View>
           )}
         </View>
+
+        {/* Fiyat-Performans Skoru */}
+        {!!report.fiyat_performans_skoru && (
+          <View style={styles.section}>
+            <Text style={styles.sectionLabel}>FİYAT-PERFORMANS SKORU</Text>
+            <View style={[styles.scoreCard, { borderColor: scoreColor(colors, report.fiyat_performans_skoru) }]}>
+              <Text style={styles.scoreLabel}>FİYAT-PERFORMANS</Text>
+              <Text style={[styles.scoreValue, { color: scoreColor(colors, report.fiyat_performans_skoru) }]}>{report.fiyat_performans_skoru}</Text>
+              <Text style={styles.scoreMax}>/ 100</Text>
+            </View>
+          </View>
+        )}
+
+        {/* Değer Kaybı */}
+        {(report.deger_kaybi_tl || 0) > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionLabel}>HASAR & DEĞER KAYBI</Text>
+            <View style={styles.lossCard}>
+              <View style={styles.lossRow}>
+                <Text style={styles.lossLabel}>Değer Kaybı</Text>
+                <Text style={styles.lossVal}>-{fmtTL(report.deger_kaybi_tl!)} · %{report.deger_kaybi_yuzde?.toFixed(1)}</Text>
+              </View>
+              <View style={[styles.lossRow, { borderTopWidth: 1, borderTopColor: colors.divider, paddingTop: spacing.sm, marginTop: spacing.sm }]}>
+                <Text style={styles.lossLabel}>Nihai Piyasa Değeri</Text>
+                <Text style={[styles.lossVal, { color: colors.brand }]}>{fmtTL(report.nihai_piyasa_degeri_tl || 0)}</Text>
+              </View>
+            </View>
+          </View>
+        )}
+
+        {/* Güvenlik Uyarıları */}
+        {report.guvenlik_uyarilari && report.guvenlik_uyarilari.length > 0 && (
+          <View style={styles.section}>
+            <Text style={[styles.sectionLabel, { color: colors.error }]}>GÜVENLİK UYARILARI</Text>
+            {report.guvenlik_uyarilari.map((w, i) => (
+              <View key={i} style={styles.safetyCard} testID={`safety-${i}`}>
+                <Ionicons name="warning" size={18} color={colors.error} />
+                <Text style={styles.safetyText}>{w}</Text>
+              </View>
+            ))}
+          </View>
+        )}
+
+        {/* Kronik Kusurlar */}
+        {report.kronik_kusurlar && report.kronik_kusurlar.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionLabel}>KRONİK KUSURLAR</Text>
+            {report.kronik_kusurlar.map((k, i) => (
+              <View key={i} style={styles.noteRow}><Ionicons name="build" size={16} color={colors.warning} /><Text style={styles.noteText}>{k}</Text></View>
+            ))}
+          </View>
+        )}
+
+        {/* Kontrol Edilecek Parçalar */}
+        {report.kontrol_edilecek_parcalar && report.kontrol_edilecek_parcalar.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionLabel}>USTAYA GÖSTERİLECEK</Text>
+            {report.kontrol_edilecek_parcalar.map((k, i) => (
+              <View key={i} style={styles.noteRow}><Ionicons name="search" size={16} color={colors.brandSecondary} /><Text style={styles.noteText}>{k}</Text></View>
+            ))}
+          </View>
+        )}
+
+        {/* İç Yıpranma */}
+        {report.ic_yipranma && report.ic_yipranma.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionLabel}>İÇ YIPRANMA TAHMİNİ</Text>
+            {report.ic_yipranma.map((w, i) => (
+              <View key={i} style={styles.wearCard} testID={`wear-${i}`}>
+                <View style={styles.wearTop}>
+                  <Text style={styles.wearName}>{w.parca}</Text>
+                  <Text style={styles.wearPct}>%{w.yuzde}</Text>
+                </View>
+                <View style={styles.wearBar}>
+                  <View style={[styles.wearFill, { width: `${Math.min(100, Math.max(0, w.yuzde))}%`, backgroundColor: w.yuzde >= 70 ? colors.error : w.yuzde >= 40 ? colors.warning : colors.success }]} />
+                </View>
+                <Text style={styles.wearDesc}>{w.aciklama}</Text>
+              </View>
+            ))}
+          </View>
+        )}
+
+        {/* Renk Analizi */}
+        {(report.renk_satis_hizi || report.renk_boya_hassasiyeti) && (
+          <View style={styles.section}>
+            <Text style={styles.sectionLabel}>RENK ANALİZİ · {report.renk}</Text>
+            {!!report.renk_satis_hizi && (
+              <View style={styles.adviceCard}><Text style={styles.adviceLabel}>SATIŞ HIZI</Text><Text style={styles.adviceText}>{report.renk_satis_hizi}</Text></View>
+            )}
+            {!!report.renk_boya_hassasiyeti && (
+              <View style={[styles.adviceCard, { marginTop: spacing.sm }]}><Text style={styles.adviceLabel}>BOYA HASSASİYETİ</Text><Text style={styles.adviceText}>{report.renk_boya_hassasiyeti}</Text></View>
+            )}
+          </View>
+        )}
+
+        {/* Pazarlık Taktikleri (buyer) */}
+        {report.mod !== 'seller' && report.pazarlik_taktikleri && report.pazarlik_taktikleri.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionLabel}>PAZARLIK EL KİTABI</Text>
+            {report.pazarlik_taktikleri.map((p, i) => (
+              <View key={i} style={styles.pazarlikCard}>
+                <Text style={styles.pazarlikNum}>{i + 1}</Text>
+                <Text style={styles.pazarlikText}>{p}</Text>
+              </View>
+            ))}
+          </View>
+        )}
+
+        {/* Satıcı İlan Metni (seller) */}
+        {report.mod === 'seller' && !!report.satici_ilan_metni && (
+          <View style={styles.section}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+              <Text style={styles.sectionLabel}>İLAN METNİ</Text>
+              <Pressable
+                testID="copy-listing"
+                onPress={() => { try { (globalThis as any).navigator?.clipboard?.writeText(report.satici_ilan_metni || ''); } catch {} }}
+                style={styles.copyBtn}
+              >
+                <Ionicons name="copy" size={14} color={colors.brand} />
+                <Text style={styles.copyBtnText}>Kopyala</Text>
+              </Pressable>
+            </View>
+            <View style={styles.listingCard}>
+              <Text style={styles.listingText}>{report.satici_ilan_metni}</Text>
+            </View>
+          </View>
+        )}
 
         <IssueBlock title="MEKANİK SORUNLAR" items={report.mekanik_sorunlar} icon="cog" styles={styles} colors={colors} />
         <IssueBlock title="ELEKTRİK SORUNLARI" items={report.elektrik_sorunlar} icon="flash" styles={styles} colors={colors} />
@@ -450,6 +577,26 @@ const createStyles = (colors: ThemeColors) =>
     maintCost: { color: colors.brandSecondary, fontSize: 13, fontFamily: fonts.semibold },
     noteRow: { flexDirection: 'row', gap: spacing.sm, alignItems: 'flex-start', marginBottom: spacing.xs, paddingRight: spacing.md },
     noteText: { color: colors.onSurfaceSecondary, fontSize: 13, lineHeight: 19, flex: 1, fontFamily: fonts.regular },
+    lossCard: { backgroundColor: colors.surfaceSecondary, borderColor: colors.error, borderWidth: 1, borderRadius: radius.md, padding: spacing.lg },
+    lossRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+    lossLabel: { color: colors.onSurfaceTertiary, fontSize: 12, letterSpacing: 1, fontFamily: fonts.medium },
+    lossVal: { color: colors.error, fontSize: 18, fontFamily: fonts.semibold },
+    safetyCard: { flexDirection: 'row', gap: spacing.md, backgroundColor: colors.surfaceSecondary, borderLeftWidth: 4, borderLeftColor: colors.error, padding: spacing.md, borderRadius: radius.md, marginBottom: spacing.sm, alignItems: 'flex-start' },
+    safetyText: { color: colors.onSurface, fontSize: 13, lineHeight: 19, flex: 1, fontFamily: fonts.medium },
+    wearCard: { backgroundColor: colors.surfaceSecondary, borderColor: colors.border, borderWidth: 1, borderRadius: radius.md, padding: spacing.md, marginBottom: spacing.sm, gap: 6 },
+    wearTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+    wearName: { color: colors.onSurface, fontSize: 14, fontFamily: fonts.semibold, flex: 1 },
+    wearPct: { color: colors.brand, fontSize: 14, fontFamily: fonts.semibold },
+    wearBar: { height: 6, backgroundColor: colors.divider, borderRadius: 3, overflow: 'hidden' },
+    wearFill: { height: '100%', borderRadius: 3 },
+    wearDesc: { color: colors.onSurfaceSecondary, fontSize: 12, lineHeight: 17, fontFamily: fonts.regular },
+    pazarlikCard: { flexDirection: 'row', gap: spacing.md, backgroundColor: colors.surfaceSecondary, borderColor: colors.border, borderWidth: 1, borderRadius: radius.md, padding: spacing.md, marginBottom: spacing.sm },
+    pazarlikNum: { color: colors.brand, fontSize: 16, fontFamily: fonts.semibold, minWidth: 22 },
+    pazarlikText: { color: colors.onSurface, fontSize: 13, lineHeight: 19, flex: 1, fontFamily: fonts.regular },
+    listingCard: { backgroundColor: colors.surfaceSecondary, borderColor: colors.border, borderWidth: 1, borderRadius: radius.md, padding: spacing.lg },
+    listingText: { color: colors.onSurface, fontSize: 13, lineHeight: 20, fontFamily: fonts.regular },
+    copyBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: colors.brandTertiary, borderColor: colors.brand, borderWidth: 1, paddingHorizontal: spacing.md, paddingVertical: 4, borderRadius: radius.pill },
+    copyBtnText: { color: colors.brand, fontSize: 11, fontFamily: fonts.semibold },
     fab: {
       position: 'absolute',
       right: spacing.xl,

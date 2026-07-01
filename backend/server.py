@@ -9,6 +9,7 @@ import logging
 import uuid
 import re
 import stripe
+from fastapi.responses import HTMLResponse, Response
 from emergentintegrations.payments.stripe.checkout import (
     StripeCheckout,
     CheckoutSessionRequest,
@@ -95,6 +96,12 @@ class AnalyzeIn(BaseModel):
     yil: int
     kilometre: Optional[int] = None
     istenilen_fiyat: Optional[float] = None
+    renk: Optional[str] = None
+    degisen_parca: Optional[int] = 0
+    boyali_parca: Optional[int] = 0
+    darbe_bolgeleri: Optional[List[str]] = None  # ["on","arka","yan","tavan","yok"]
+    mod: Optional[str] = "buyer"  # "buyer" | "seller"
+    dil: Optional[str] = "tr"     # tr | en | zh | de | fr | es
 
 
 class TrafficLightItem(BaseModel):
@@ -109,6 +116,12 @@ class MaintenanceItem(BaseModel):
     tahmini_maliyet_tl: str
 
 
+class WearItem(BaseModel):
+    parca: str
+    yuzde: int
+    aciklama: str
+
+
 class AnalysisReport(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     marka: str
@@ -116,18 +129,50 @@ class AnalysisReport(BaseModel):
     yil: int
     kilometre: Optional[int] = None
     istenilen_fiyat: Optional[float] = None
+    renk: Optional[str] = None
+    degisen_parca: Optional[int] = 0
+    boyali_parca: Optional[int] = 0
+    darbe_bolgeleri: Optional[List[str]] = None
+    mod: Optional[str] = "buyer"
+    dil: Optional[str] = "tr"
+    # Original scoring
     guven_skoru: int
+    fiyat_performans_skoru: int = 0
     ozet: str
     fiyat_min_tl: float
     fiyat_max_tl: float
     fiyat_yorumu: str
+    # NEW: value loss from damage
+    deger_kaybi_tl: float = 0
+    deger_kaybi_yuzde: float = 0
+    nihai_piyasa_degeri_tl: float = 0
+    # Fuel
     yakit_100km_litre: float
     aylik_yakit_tahmini_tl: float
+    # Issue categories (traffic-light)
     mekanik_sorunlar: List[TrafficLightItem]
     elektrik_sorunlar: List[TrafficLightItem]
     kaporta_ic_mekan: List[TrafficLightItem]
-    periyodik_bakim: List[MaintenanceItem]
     olasi_masraflar: List[TrafficLightItem]
+    # Maintenance
+    periyodik_bakim: List[MaintenanceItem]
+    # NEW: chronic issues & recalls
+    kronik_kusurlar: List[str] = []
+    kontrol_edilecek_parcalar: List[str] = []
+    # NEW: safety warnings (kritik bölge uyarıları — front damage → shasi/podye/airbag)
+    guvenlik_uyarilari: List[str] = []
+    # NEW: interior wear estimates
+    ic_yipranma: List[WearItem] = []
+    # NEW: color analysis
+    renk_satis_hizi: Optional[str] = None
+    renk_boya_hassasiyeti: Optional[str] = None
+    # NEW: negotiation tactics (buyer)
+    pazarlik_taktikleri: List[str] = []
+    # NEW: seller listing text
+    satici_ilan_metni: Optional[str] = None
+    # NEW: dynamic image query for hero
+    gorsel_arama: Optional[str] = None
+    # Existing final
     alim_tavsiyesi: str
     dikkat_edilecek_noktalar: List[str]
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
@@ -422,43 +467,57 @@ async def iap_verify(data: IapVerifyIn, current_user: UserOut = Depends(get_curr
 
 
 # ---------------- AI Analysis (deducts 1 credit) ----------------
-SYSTEM_PROMPT = """Sen bir Türk otomotiv ekspertiz uzmanısın. 20+ yıllık deneyimin var. Kullanıcı sana bir aracın marka, model, yıl ve opsiyonel kilometre bilgisini verecek. Sen o araca özel DETAYLI ve GERÇEK bir analiz yapacaksın.
-
-Cevabını SADECE geçerli JSON formatında ver, başka hiçbir metin ekleme. JSON yapısı ŞU olmalı:
-
-{
-  "guven_skoru": <0-100 arası tam sayı, aracın genel güvenilirlik puanı>,
-  "ozet": "<2-3 cümlelik genel özet>",
-  "fiyat_min_tl": <Türkiye piyasasında minimum tahmini TL fiyatı, sayı>,
-  "fiyat_max_tl": <Türkiye piyasasında maksimum tahmini TL fiyatı, sayı>,
-  "fiyat_yorumu": "<eğer kullanıcı istenilen fiyat verdiyse UYGUN/PAHALI/UCUZ olarak yorumla, vermediyse genel yorum>",
-  "yakit_100km_litre": <100km başına ortalama yakıt tüketimi litre, ondalık sayı>,
-  "aylik_yakit_tahmini_tl": <ayda 1500km kullanım varsayımıyla TL, sayı>,
-  "mekanik_sorunlar": [
-    {"baslik": "<sorun adı>", "aciklama": "<detay>", "seviye": "green|yellow|red"}
-  ],
-  "elektrik_sorunlar": [
-    {"baslik": "...", "aciklama": "...", "seviye": "green|yellow|red"}
-  ],
-  "kaporta_ic_mekan": [
-    {"baslik": "...", "aciklama": "...", "seviye": "green|yellow|red"}
-  ],
-  "periyodik_bakim": [
-    {"isim": "<bakım adı>", "periyot": "<örn: 10.000 km>", "tahmini_maliyet_tl": "<örn: 3000-5000 TL>"}
-  ],
-  "olasi_masraflar": [
-    {"baslik": "<masraf>", "aciklama": "<tahmini TL değeri ve detay>", "seviye": "green|yellow|red"}
-  ],
-  "alim_tavsiyesi": "<KESİNLİKLE ALIN / DİKKATLİ ALIN / ALMAYIN gibi net tavsiye + gerekçe>",
-  "dikkat_edilecek_noktalar": ["<madde 1>", "<madde 2>", "..."]
+LANG_NAME = {
+    "tr": "Turkish (Türkçe)",
+    "en": "English",
+    "zh": "Simplified Chinese (中文)",
+    "de": "German (Deutsch)",
+    "fr": "French (Français)",
+    "es": "Spanish (Español)",
 }
 
-Seviyeler:
-- green: sorun yok / güvenli
-- yellow: dikkat gerektirir / orta risk
-- red: ciddi kronik sorun / yüksek risk
+SYSTEM_PROMPT_TEMPLATE = """You are an experienced Turkish automotive expert with 20+ years of experience. The user will send you brand, model, year, kilometers, color, and body-damage history of a car. You will produce a rigorous PRE-PURCHASE inspection report.
 
-Her kategoride EN AZ 3 madde olsun. Türkçe cevap ver, para birimi TL. Fiyatları güncel 2026 Türkiye piyasasına göre ver."""
+CRITICAL: Respond in language = {lang_name}. All string values in the JSON must be in that language. Keys stay in Turkish exactly as in the schema below. Prices in Turkish Lira (TL). Do NOT wrap in code fences. Reply ONLY with valid JSON.
+
+Schema (all keys required, no extras):
+{{
+  "guven_skoru": <int 0-100, overall trust>,
+  "fiyat_performans_skoru": <int 0-100, value-for-money considering damage, mileage, chronic issues, price>,
+  "ozet": "<2-3 sentence summary>",
+  "fiyat_min_tl": <number, TL, undamaged fair market min>,
+  "fiyat_max_tl": <number, TL, undamaged fair market max>,
+  "fiyat_yorumu": "<if user gave a price: label it 'UYGUN/PAHALI/UCUZ' (or translated) and explain briefly>",
+  "deger_kaybi_tl": <number, TL lost due to given damage history (changed parts + painted parts + impact zones)>,
+  "deger_kaybi_yuzde": <number 0-100, same as percent>,
+  "nihai_piyasa_degeri_tl": <number, TL: adjusted mid price after damage deduction>,
+  "yakit_100km_litre": <decimal>,
+  "aylik_yakit_tahmini_tl": <number, monthly TL at 1500 km/month>,
+  "mekanik_sorunlar": [{{"baslik": "...", "aciklama": "...", "seviye": "green|yellow|red"}}],
+  "elektrik_sorunlar": [{{"baslik": "...", "aciklama": "...", "seviye": "green|yellow|red"}}],
+  "kaporta_ic_mekan": [{{"baslik": "...", "aciklama": "...", "seviye": "green|yellow|red"}}],
+  "olasi_masraflar": [{{"baslik": "...", "aciklama": "...", "seviye": "green|yellow|red"}}],
+  "periyodik_bakim": [{{"isim": "...", "periyot": "...", "tahmini_maliyet_tl": "..."}}],
+  "kronik_kusurlar": ["<specific known factory / age-related chronic defect for THIS brand+model+year>"],
+  "kontrol_edilecek_parcalar": ["<specific parts a mechanic must inspect before purchase>"],
+  "guvenlik_uyarilari": ["<CRITICAL SAFETY WARNING lines. If 'on' impact given, mention chassis/podye/radiator panel/airbag risk in ALL CAPS start. If 'tavan' painted, mention rollover-severe-damage risk. If 'yan' impact, side airbags & B pillar. Etc.>"],
+  "ic_yipranma": [{{"parca": "Direksiyon derisi|Sürücü koltuğu minderi|Vites topuzu|Klima/multimedya tuş takımı|Kapı döşemeleri", "yuzde": <int 0-100>, "aciklama": "<short>"}}],
+  "renk_satis_hizi": "<if renk given: how fast that color sells for this model in Turkey — 'En hızlı satılan', 'Ortalama', 'Niş kitle', etc. If no color: empty string>",
+  "renk_boya_hassasiyeti": "<if renk given: paint sensitivity: sun-fade, scratch visibility, matching parts risk. If no color: empty string>",
+  "pazarlik_taktikleri": ["<For BUYER MODE only: 5-7 concrete negotiation moves tailored to the given damage/mileage/color, referencing exact TL amounts to knock off>"],
+  "satici_ilan_metni": "<For SELLER MODE only: a ready-to-copy sahibinden.com style listing description (max 250 words), honest yet appealing, mentioning all positives + transparently noting damage. Empty string if buyer mode.>",
+  "gorsel_arama": "<2-4 keyword english search string for an Unsplash image of THIS car, e.g. 'white 2018 Toyota Corolla'>",
+  "alim_tavsiyesi": "<clear verdict: STRONG BUY / CAUTIOUS BUY / DO NOT BUY (translated) + reasoning>",
+  "dikkat_edilecek_noktalar": ["<5-10 bullet points>"]
+}}
+
+Rules:
+- Each traffic-light category must have AT LEAST 3 items.
+- "seviye" MUST be exactly one of green/yellow/red (English tokens).
+- Chronic issues must be specific to the exact make/model/year (real known defects), not generic advice.
+- Value loss guidance: each replaced part ≈ 3-6% deduction, each painted part ≈ 1-2%, impact zone (on/arka) ≈ 4-8%, tavan/şase ≈ 15-25%. Cap total loss at 45%.
+- If mod == 'seller', focus pazarlik_taktikleri as an empty array and fill satici_ilan_metni. Else vice versa.
+- Prices reflect 2026 Turkey market."""
 
 
 @api_router.post("/analyze", response_model=AnalysisReport)
@@ -488,27 +547,38 @@ async def analyze_vehicle(data: AnalyzeIn, current_user: UserOut = Depends(get_c
             "created_at": datetime.now(timezone.utc).isoformat(),
         })
 
-    prompt = f"""Araç bilgileri:
-- Marka: {data.marka}
-- Model: {data.model}
-- Yıl: {data.yil}"""
+    lang = data.dil if data.dil in LANG_NAME else "tr"
+    lang_name = LANG_NAME[lang]
+    system_prompt = SYSTEM_PROMPT_TEMPLATE.format(lang_name=lang_name)
+
+    parts = [
+        f"Brand/Marka: {data.marka}",
+        f"Model: {data.model}",
+        f"Year/Yıl: {data.yil}",
+        f"Mode/Mod: {data.mod or 'buyer'}",
+    ]
     if data.kilometre is not None:
-        prompt += f"\n- Kilometre: {data.kilometre} km"
+        parts.append(f"Kilometers/Kilometre: {data.kilometre}")
     if data.istenilen_fiyat is not None:
-        prompt += f"\n- Satıcının istediği fiyat: {data.istenilen_fiyat} TL"
-    prompt += "\n\nBu araca özel detaylı ekspertiz analizini JSON formatında ver."
+        parts.append(f"Asking price/İstenilen fiyat (TL): {data.istenilen_fiyat}")
+    if data.renk:
+        parts.append(f"Color/Renk: {data.renk}")
+    parts.append(f"Değişen parça sayısı (parts replaced): {data.degisen_parca or 0}")
+    parts.append(f"Boyalı parça sayısı (parts painted): {data.boyali_parca or 0}")
+    if data.darbe_bolgeleri:
+        parts.append(f"Darbe bölgeleri (impact zones): {', '.join(data.darbe_bolgeleri)}")
+    prompt = "\n".join(parts) + "\n\nProduce the full JSON analysis now."
 
     session_id = f"analyze-{uuid.uuid4()}"
     chat = LlmChat(
         api_key=EMERGENT_LLM_KEY,
         session_id=session_id,
-        system_message=SYSTEM_PROMPT,
+        system_message=system_prompt,
     ).with_model("gemini", "gemini-2.5-pro")
 
     try:
         response = await chat.send_message(UserMessage(text=prompt))
     except Exception as e:
-        # Refund credit on LLM failure (only if we deducted one)
         if not current_user.is_admin:
             await db.users.update_one({"id": current_user.id}, {"$inc": {"query_credits": 1}})
             await db.credit_txns.insert_one({
@@ -539,31 +609,61 @@ async def analyze_vehicle(data: AnalyzeIn, current_user: UserOut = Depends(get_c
                 await db.users.update_one({"id": current_user.id}, {"$inc": {"query_credits": 1}})
             raise HTTPException(502, "AI cevabı geçersiz JSON")
 
+    def _safe_list_dict(key, model_cls):
+        items = parsed.get(key, []) or []
+        out = []
+        for x in items:
+            try:
+                out.append(model_cls(**x))
+            except Exception:
+                pass
+        return out
+
     report = AnalysisReport(
         marka=data.marka,
         model=data.model,
         yil=data.yil,
         kilometre=data.kilometre,
         istenilen_fiyat=data.istenilen_fiyat,
+        renk=data.renk,
+        degisen_parca=data.degisen_parca or 0,
+        boyali_parca=data.boyali_parca or 0,
+        darbe_bolgeleri=data.darbe_bolgeleri or [],
+        mod=data.mod or "buyer",
+        dil=lang,
         guven_skoru=int(parsed.get("guven_skoru", 50)),
+        fiyat_performans_skoru=int(parsed.get("fiyat_performans_skoru", 50)),
         ozet=parsed.get("ozet", ""),
         fiyat_min_tl=float(parsed.get("fiyat_min_tl", 0)),
         fiyat_max_tl=float(parsed.get("fiyat_max_tl", 0)),
         fiyat_yorumu=parsed.get("fiyat_yorumu", ""),
+        deger_kaybi_tl=float(parsed.get("deger_kaybi_tl", 0)),
+        deger_kaybi_yuzde=float(parsed.get("deger_kaybi_yuzde", 0)),
+        nihai_piyasa_degeri_tl=float(parsed.get("nihai_piyasa_degeri_tl", 0)),
         yakit_100km_litre=float(parsed.get("yakit_100km_litre", 0)),
         aylik_yakit_tahmini_tl=float(parsed.get("aylik_yakit_tahmini_tl", 0)),
-        mekanik_sorunlar=[TrafficLightItem(**x) for x in parsed.get("mekanik_sorunlar", [])],
-        elektrik_sorunlar=[TrafficLightItem(**x) for x in parsed.get("elektrik_sorunlar", [])],
-        kaporta_ic_mekan=[TrafficLightItem(**x) for x in parsed.get("kaporta_ic_mekan", [])],
-        periyodik_bakim=[MaintenanceItem(**x) for x in parsed.get("periyodik_bakim", [])],
-        olasi_masraflar=[TrafficLightItem(**x) for x in parsed.get("olasi_masraflar", [])],
+        mekanik_sorunlar=_safe_list_dict("mekanik_sorunlar", TrafficLightItem),
+        elektrik_sorunlar=_safe_list_dict("elektrik_sorunlar", TrafficLightItem),
+        kaporta_ic_mekan=_safe_list_dict("kaporta_ic_mekan", TrafficLightItem),
+        olasi_masraflar=_safe_list_dict("olasi_masraflar", TrafficLightItem),
+        periyodik_bakim=_safe_list_dict("periyodik_bakim", MaintenanceItem),
+        kronik_kusurlar=parsed.get("kronik_kusurlar", []) or [],
+        kontrol_edilecek_parcalar=parsed.get("kontrol_edilecek_parcalar", []) or [],
+        guvenlik_uyarilari=parsed.get("guvenlik_uyarilari", []) or [],
+        ic_yipranma=_safe_list_dict("ic_yipranma", WearItem),
+        renk_satis_hizi=parsed.get("renk_satis_hizi") or None,
+        renk_boya_hassasiyeti=parsed.get("renk_boya_hassasiyeti") or None,
+        pazarlik_taktikleri=parsed.get("pazarlik_taktikleri", []) or [],
+        satici_ilan_metni=parsed.get("satici_ilan_metni") or None,
+        gorsel_arama=parsed.get("gorsel_arama") or None,
         alim_tavsiyesi=parsed.get("alim_tavsiyesi", ""),
-        dikkat_edilecek_noktalar=parsed.get("dikkat_edilecek_noktalar", []),
+        dikkat_edilecek_noktalar=parsed.get("dikkat_edilecek_noktalar", []) or [],
         user_id=current_user.id,
     )
     doc = report.model_dump()
     doc["created_at"] = doc["created_at"].isoformat()
     await db.reports.insert_one(doc)
+    doc.pop("_id", None)
     return report
 
 
@@ -865,7 +965,98 @@ async def admin_payments(_: UserOut = Depends(get_current_admin)):
 
 @api_router.get("/")
 async def root():
-    return {"message": "OtoEkspertiz AI API", "version": "1.3"}
+    return {"message": "OtoEkspertiz AI API", "version": "2.0"}
+
+
+# ---------------- OG Card (WhatsApp / Social Preview) ----------------
+@app.get("/og/{report_id}", response_class=HTMLResponse)
+async def og_card_html(report_id: str, request: Request):
+    """Public HTML page with og: meta tags for WhatsApp / social link preview."""
+    doc = await db.reports.find_one({"id": report_id}, {"_id": 0})
+    if not doc:
+        return HTMLResponse("<h1>Rapor bulunamadı</h1>", status_code=404)
+    base = str(request.base_url).rstrip("/")
+    og_img = f"{base}/og/{report_id}/card.png"
+    title = f"{doc['marka']} {doc['model']} {doc['yil']} · Ekspertiz Skoru {doc.get('guven_skoru', 0)}/100"
+    km = doc.get("kilometre")
+    km_txt = f"{int(km):,} km · ".replace(",", ".") if km else ""
+    desc = f"{km_txt}Fiyat-Performans: {doc.get('fiyat_performans_skoru', 0)}/100 · OtoEkspertiz AI raporu"
+    html = f"""<!DOCTYPE html><html lang="tr"><head>
+<meta charset="utf-8" />
+<meta property="og:type" content="website" />
+<meta property="og:title" content="{title}" />
+<meta property="og:description" content="{desc}" />
+<meta property="og:image" content="{og_img}" />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="630" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="{title}" />
+<meta name="twitter:description" content="{desc}" />
+<meta name="twitter:image" content="{og_img}" />
+<title>{title}</title>
+<style>body{{background:#0A1628;color:#F5F7FA;font-family:-apple-system,sans-serif;padding:32px;text-align:center;}}
+img{{max-width:600px;width:100%;border-radius:12px;}}h1{{color:#FFC93C;}}</style>
+</head><body>
+<h1>{title}</h1>
+<p>{desc}</p>
+<img src="{og_img}" alt="{title}" />
+</body></html>"""
+    return HTMLResponse(html)
+
+
+@app.get("/og/{report_id}/card.png")
+async def og_card_png(report_id: str):
+    """Generates a 1200x630 PNG card server-side using Pillow."""
+    doc = await db.reports.find_one({"id": report_id}, {"_id": 0})
+    if not doc:
+        raise HTTPException(404, "Rapor bulunamadı")
+    from PIL import Image, ImageDraw, ImageFont
+    import io as _io
+
+    W, H = 1200, 630
+    img = Image.new("RGB", (W, H), color=(10, 22, 40))
+    d = ImageDraw.Draw(img)
+    # accent bars
+    d.rectangle([0, 0, W, 8], fill=(255, 201, 60))
+    d.rectangle([0, H - 8, W, H], fill=(255, 201, 60))
+
+    def font(size):
+        for p in [
+            "/app/frontend/assets/fonts/Poppins-SemiBold.ttf",
+            "/app/frontend/assets/fonts/Poppins-Medium.ttf",
+            "/app/frontend/assets/fonts/Poppins-Regular.ttf",
+        ]:
+            try:
+                return ImageFont.truetype(p, size)
+            except Exception:
+                continue
+        return ImageFont.load_default()
+
+    d.text((60, 60), "OTOEKSPERTİZ AI", fill=(255, 201, 60), font=font(30))
+    d.text((60, 110), f"{doc['marka']} {doc['model']}", fill=(255, 255, 255), font=font(80))
+    d.text((60, 210), f"{doc['yil']}", fill=(199, 210, 224), font=font(48))
+    km = doc.get("kilometre")
+    if km:
+        km_str = f"{int(km):,} km".replace(",", ".")
+        d.text((60, 280), km_str, fill=(143, 160, 184), font=font(36))
+
+    # Score box (right)
+    score = int(doc.get("guven_skoru", 0))
+    box_x, box_y, box_w, box_h = 800, 120, 340, 340
+    color = (74, 222, 128) if score >= 70 else (255, 201, 60) if score >= 45 else (248, 113, 113)
+    d.rectangle([box_x, box_y, box_x + box_w, box_y + box_h], outline=color, width=6)
+    d.text((box_x + 60, box_y + 20), "GÜVEN SKORU", fill=(199, 210, 224), font=font(24))
+    d.text((box_x + 60, box_y + 70), str(score), fill=color, font=font(180))
+    d.text((box_x + 250, box_y + 240), "/100", fill=(143, 160, 184), font=font(28))
+
+    # bottom summary
+    fp = int(doc.get("fiyat_performans_skoru", 0))
+    d.text((60, 480), f"FIYAT-PERFORMANS  {fp}/100", fill=(255, 201, 60), font=font(28))
+    d.text((60, 540), "Detaylı ekspertiz raporunu OtoEkspertiz AI'da görüntüle", fill=(199, 210, 224), font=font(22))
+
+    buf = _io.BytesIO()
+    img.save(buf, format="PNG")
+    return Response(content=buf.getvalue(), media_type="image/png", headers={"Cache-Control": "public, max-age=86400"})
 
 
 app.include_router(api_router)

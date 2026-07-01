@@ -9,6 +9,7 @@ import { useIconFonts } from '@/src/hooks/use-icon-fonts';
 import { usePoppinsFonts } from '@/src/hooks/use-poppins';
 import { AuthProvider, useAuth } from '@/src/auth/AuthContext';
 import { ThemeProvider, useTheme } from '@/src/theme/ThemeContext';
+import { I18nProvider } from '@/src/i18n/I18nContext';
 
 LogBox.ignoreAllLogs(true);
 SplashScreen.preventAutoHideAsync();
@@ -68,10 +69,12 @@ export default function RootLayout() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
         <ThemeProvider>
-          <ThemedStatusBar />
-          <AuthProvider>
-            <RootNav />
-          </AuthProvider>
+          <I18nProvider>
+            <ThemedStatusBar />
+            <AuthProvider>
+              <RootNav />
+            </AuthProvider>
+          </I18nProvider>
         </ThemeProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>

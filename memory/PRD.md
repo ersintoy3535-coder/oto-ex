@@ -1,82 +1,65 @@
-# OtoEkspertiz AI — PRD
+# OtoEkspertiz AI — PRD (v2.0)
 
 ## Overview
-Turkish mobile app (Expo React Native) that gives pre-purchase AI vehicle analysis. User enters brand + model + year, Gemini 2.5 Pro returns a structured report; Gemini 2.5 Flash powers follow-up Q&A on that report.
+Turkish + English + Chinese + German + French + Spanish mobile app for pre-purchase / pre-sale vehicle analysis. Two modes:
+- **Buyer mode:** trust score, damage-adjusted market price, chronic defects, safety warnings, interior wear estimate, color-based sales speed, negotiation playbook
+- **Seller mode:** ready-to-paste listing text tailored to the exact vehicle + damage history
 
-## Core Features
+## v2.0 Major Feature Drop
 
-### Analysis (Gemini 2.5 Pro)
-Trust score (0-100), summary, market price range (TL), fuel consumption + monthly cost, chronic mechanical/electrical/body issues (traffic-light: green/yellow/red), periodic maintenance schedule with cost brackets, potential expenses, buy/avoid recommendation, attention points.
+### 1. Damage & Value Loss (Feature 1)
+Search form now has:
+- **Değişen parça** counter (0..N)
+- **Boyalı parça** counter (0..N)
+- **Darbe bölgesi** chips: Yok · Ön · Arka · Yan · Tavan (multi-select except "Yok" is exclusive)
+Backend applies these to the Gemini prompt with concrete deduction rules (each replaced part 3-6%, painted 1-2%, front/rear impact 4-8%, tavan/şase 15-25%, capped 45%).
+Report shows `deger_kaybi_tl`, `deger_kaybi_yuzde`, `nihai_piyasa_degeri_tl` in a red-bordered card.
 
-### Chat (Gemini 2.5 Flash) — v1.2
-Report-scoped chat: user asks follow-up questions about a specific vehicle. Fast Flash model, short conversational answers. Persisted per user + report. Suggestion chips for common questions.
+### 2. Buyer Negotiation Playbook (Feature 2)
+In buyer mode, Gemini generates 5-7 concrete negotiation moves referencing exact TL amounts to discount based on damage/mileage/color. Shown as numbered `pazarlik_taktikleri` cards.
 
-### PDF Sharing — v1.2
-Client-side PDF generation from report using `expo-print`. Native share dialog (iOS AirDrop, WhatsApp, email) via `expo-sharing`. On web opens PDF in new tab. HTML template with branded header, score box, categorized issues, maintenance table.
+### 3. AI Listing Wizard (Feature 3)
+In seller mode, Gemini produces a 200-300 word sahibinden.com-style listing text (honest but appealing, discloses damage). Displayed in `satici_ilan_metni` block with a Copy button.
 
-### Monetization (v1.1)
-3 free credits on signup. Each analyze deducts 1 credit atomically. Refill via:
-1. **Rewarded Ad** (+1) — MOCK now, real AdMob on native build
-2. **Stripe Checkout** — works today via emergentintegrations proxy (`sk_test_emergent`)
-3. **Native IAP** — MOCK verify now, real StoreKit/Play Billing on native build
+### 4. Chronic Defects & Recalls (Feature 4)
+`kronik_kusurlar` array: specific known factory/age defects for THIS make/model/year (e.g. "PSA 1.6 e-HDi mağara yataklı EGR", "DSG 7-vites Mekatronik ünitesi").
+`kontrol_edilecek_parcalar` array: parts a mechanic MUST inspect. Shown as two sections in the report.
 
-Packages: small=3/$1, medium (popular)=10/$3, large=50/$10.
+### 5. Interior Wear Estimate (Feature 5)
+`ic_yipranma` array of `{parca, yuzde, aciklama}` (steering leather, driver seat cushion, gear knob, HVAC/multimedia buttons, door panels).
+Displayed as progress bars with color coding (green<40%, yellow<70%, red≥70%).
 
-## Themes (v1.0-2)
-Two themes, live-switchable in Profile, persisted in AsyncStorage:
-- **Navy Blue** (default): #0A1628 + #FFC93C yellow
-- **Carbon Dark**: #0D0E11 + #E63946 ember red
+### 6. Color Analysis (Feature 6)
+Optional `renk` field. Gemini populates `renk_satis_hizi` (e.g. "En hızlı satılan") and `renk_boya_hassasiyeti` (sun-fade risk, matching parts risk).
 
-## Typography
-Poppins Regular / Medium / SemiBold, bundled from `/assets/fonts/`.
+### 7. i18n — 6 Languages (Feature 7)
+Full app internationalization: **TR · EN · ZH · DE · FR · ES**.
+- `useI18n()` context, persisted in AsyncStorage
+- Profile screen has flag chips for each language
+- AnalyzeIn.dil field sends selected language to backend
+- Gemini system prompt receives target language name and returns ALL report strings in that language
 
-## Endpoints
-- Auth: `POST /api/auth/{register,login}`, `GET /api/auth/me`
-- Analysis: `POST /api/analyze` (Gemini 2.5 Pro, deducts 1 credit), `GET /api/history`, `GET /api/reports/{id}`
-- Chat: `GET /api/reports/{id}/chat`, `POST /api/reports/{id}/chat` (Gemini 2.5 Flash)
-- Favorites: `GET/POST /api/favorites`, `DELETE /api/favorites/{id}`, `GET /api/favorites/ids`
-- Compare: `POST /api/compare`
-- Credits: `GET /api/credits/me`, `GET /api/credits/packages`, `POST /api/credits/reward-ad`
-- Payments: `POST /api/checkout/create`, `GET /api/checkout/status/{id}`, `POST /api/iap/verify`
+### 8. Visual Richness + Price-Performance + OG Card (Feature 8)
+- **Fiyat-Performans Skoru (0-100):** computed by Gemini considering damage + mileage + chronic issues + price. Rendered as second score card.
+- **Dynamic image query:** `gorsel_arama` field (english keywords) that frontend can use to fetch a matching stock photo.
+- **WhatsApp OG Card:** `GET /og/{report_id}` returns HTML page with `og:title`, `og:description`, `og:image` meta tags. `GET /og/{report_id}/card.png` generates a 1200×630 branded PNG server-side using Pillow (Poppins fonts, brand navy background, yellow accent bars, score box).
 
-## LLM model usage (explicit)
-| Feature | Model | Rationale |
+## Endpoints (updated)
+| Method | Path | Notes |
 |---|---|---|
-| Auth, favorites, credits, compare | — | No LLM |
-| Vehicle analysis report | Gemini 2.5 Pro | Deep reasoning over vehicle-specific chronic issues |
-| Report follow-up chat | Gemini 2.5 Flash | Fast, cheap conversational Q&A |
+| POST | /api/analyze | Now accepts `renk`, `degisen_parca`, `boyali_parca`, `darbe_bolgeleri`, `mod`, `dil` |
+| GET | /og/{report_id} | Public HTML for social preview |
+| GET | /og/{report_id}/card.png | Server-rendered 1200×630 PNG |
 
-## Screens
-- `(auth)/login, register`
-- `(app)/(tabs)/index` — search + credit pill
-- `(app)/(tabs)/compare` — 2-car side-by-side
-- `(app)/(tabs)/favorites` — favorites + history tabs
-- `(app)/(tabs)/profile` — theme picker + credits card + logout
-- `(app)/report/[id]` — full analysis + AI chat FAB + PDF share
-- `(app)/credits` — paywall
-- `checkout/return` — Stripe redirect landing
+## LLM
+- Analysis: **Gemini 2.5 Pro** (multilingual prompt, structured JSON)
+- Chat: **Gemini 2.5 Flash**
 
-## Tech
-- Backend: FastAPI + MongoDB (motor), JWT (python-jose), bcrypt, emergentintegrations (Gemini 2.5 Pro + Flash, Stripe wrapper)
-- Frontend: Expo Router (file-based), Poppins via expo-font, expo-web-browser (Stripe), expo-print + expo-sharing (PDF)
-- Deep-link scheme: `otoekspertiz`
+## Credentials
+- Regular: `test@oto.com / test123`
+- Admin: `admin@otoekspertiz.com / OtoAdmin2026!`
 
 ## Env
-- `EMERGENT_LLM_KEY`, `JWT_SECRET`, `MONGO_URL`, `DB_NAME`
-- `STRIPE_API_KEY=sk_test_emergent` (routed through emergent proxy)
+- `EMERGENT_LLM_KEY`, `JWT_SECRET`, `MONGO_URL`, `DB_NAME`, `STRIPE_API_KEY`
 - `FREE_CREDITS_ON_SIGNUP=3`
-- `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `ADMIN_RESET_PASSWORD` (admin seeding, idempotent on startup)
-
-## Admin (v1.3)
-- `is_admin` flag on user document (auto-seeded from env on startup)
-- Admin bypasses credit deduction in `/api/analyze` (unlimited queries)
-- Admin panel screen `/(app)/admin` with 4 tabs:
-  - **İstatistik:** total users, reports, 7-day analyses, chats, ad rewards, Stripe/IAP counts + revenue
-  - **Kullanıcılar:** paginated user list with credit adjust modal
-  - **Hareketler:** recent credit transactions (analyze, refund, admin adjust, purchase)
-  - **Ödemeler:** recent Stripe sessions + IAP receipts
-- Endpoints: `GET /api/admin/{stats,users,txns,payments}`, `POST /api/admin/users/{id}/credits`
-- Frontend shows "ADMIN PANEL" row in Profile only when `user.is_admin === true`
-
-## Native swap guide
-See `/app/frontend/docs/native-integrations.md` for real AdMob + IAP integration steps after producing a native build.
+- `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `ADMIN_RESET_PASSWORD`

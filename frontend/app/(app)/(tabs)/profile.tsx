@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useI18n, LANGUAGES } from '@/src/i18n/I18nContext';
@@ -35,6 +35,7 @@ export default function ProfileScreen() {
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
+      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
       <View style={styles.header}>
         <Text style={styles.eyebrow}>HESAP</Text>
         <Text style={styles.title}>Profil</Text>
@@ -147,6 +148,7 @@ export default function ProfileScreen() {
         <Ionicons name="log-out-outline" size={20} color={colors.error} />
         <Text style={styles.logoutText}>Çıkış Yap</Text>
       </Pressable>
+      </ScrollView>
     </SafeAreaView>
   );
 }
@@ -168,6 +170,7 @@ function InfoRow({ icon, title, value, colors, styles }: any) {
 const createStyles = (colors: ThemeColors) =>
   StyleSheet.create({
     safe: { flex: 1, backgroundColor: colors.surface },
+    scroll: { paddingBottom: 140 },
     header: { padding: spacing.xl, paddingBottom: spacing.md },
     eyebrow: { color: colors.brandSecondary, fontSize: 11, letterSpacing: 2, marginBottom: spacing.xs, fontFamily: fonts.medium },
     title: { color: colors.onSurface, fontSize: 28, fontFamily: fonts.semibold },
@@ -248,7 +251,7 @@ const createStyles = (colors: ThemeColors) =>
     rowTitle: { color: colors.onSurfaceTertiary, fontSize: 11, letterSpacing: 1, fontFamily: fonts.medium },
     rowValue: { color: colors.onSurface, fontSize: 14, marginTop: 2, fontFamily: fonts.regular },
     logoutBtn: {
-      marginTop: spacing.xxl,
+      marginTop: spacing.xl,
       marginHorizontal: spacing.xl,
       backgroundColor: colors.surfaceSecondary,
       borderColor: colors.error,

@@ -1,0 +1,36 @@
+{
+  "summary": "Logout bug fix VERIFIED end-to-end. However, a blocking JSX syntax error was found in profile.tsx that had to be fixed BEFORE testing could proceed: (a) missing </ScrollView> closing tag, (b) stray garbage code at end of file (extra 'fontFamily: fonts.semibold },' and duplicate '});'). Bundle returned HTTP 500 with 'Expected corresponding JSX closing tag for <ScrollView>' error until fixed. After the fix: login (test@oto.com/test123) works, Profile screen is scrollable through profile card → credits → DIL (6 language chips) → TEMA (2 themes) → UYGULAMA (Sürüm, AI Modeli) → Çıkış Yap button at bottom. testID='logout-btn' is present, tappable, clears AsyncStorage token, navigates to /login (Hoş geldin hero visible), and re-visiting a protected route /(app)/(tabs) correctly redirects to /login.",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "app/(app)/(tabs)/profile.tsx",
+        "issue": "Bundle-blocking JSX syntax errors introduced by main agent's ScrollView wrap: (1) missing </ScrollView> before </SafeAreaView> at line 151, (2) trailing garbage after createStyles closing brace (lines 267-268: ' fontFamily: fonts.semibold },' and extra '});'). Fixed by testing agent to unblock testing.",
+        "testID": "logout-btn",
+        "priority": "CRITICAL"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [],
+  "action_items": [
+    "Review the fix applied by testing agent in /app/frontend/app/(app)/(tabs)/profile.tsx (added missing </ScrollView>, removed stray trailing lines). Ensure no similar copy-paste artifacts remain elsewhere.",
+    "Consider adding a lint / typecheck step in CI to catch unclosed JSX and stray tokens before shipping."
+  ],
+  "critical_code_review_comments": [
+    "profile.tsx had a broken JSX structure (unclosed ScrollView) that would have caused a red screen for every user — the bundle returned HTTP 500 until fixed. Recommend running the tsx compile before commit.",
+    "signOut in AuthContext.tsx does NOT explicitly call router.replace('/(auth)/login') — the agent context note claims it does, but implementation relies solely on RootNav effect. This works (verified) but the note is inaccurate.",
+    "Initial mount fires /api/auth/me with a stale token producing a 401 in the console on first load after logout+relogin cycle — harmless but noisy; consider guarding."
+  ],
+  "updated_files": [
+    "/app/frontend/app/(app)/(tabs)/profile.tsx (added </ScrollView>; removed 2 trailing garbage lines)"
+  ],
+  "success_rate": { "backend": "N/A", "frontend": "100%" },
+  "seed_data_creation": "None",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Logout flow works end-to-end for regular user. Admin logout not explicitly retested but same code path — should also work. If future v2.1 adds more items above logout button, keep ScrollView wrap and paddingBottom:140 for tab-bar clearance.",
+  "rca_of_issue": "Root cause of the original user-reported bug ('logout unreachable'): Profile screen was a plain View so the button below the newly added Language/Theme/Admin/Version sections was clipped off-screen. Fix (wrap in ScrollView + paddingBottom:140) is correct and now verified. However, the fix commit shipped with two JSX syntax errors (unclosed <ScrollView> and trailing garbage lines) that made the bundle unbuildable — HTTP 500 on /profile.bundle. Testing agent fixed the syntax issues, then verified: login → Profile tab → scroll to bottom → tap logout-btn → AsyncStorage cleared → redirect to /login → protected route also redirects to /login. All acceptance criteria met."
+}

@@ -23,9 +23,10 @@ function RootNav() {
     if (loading) return;
     const inAuthGroup = segments[0] === '(auth)';
     const inAppGroup = segments[0] === '(app)';
+    const inPublicRoute = segments[0] === 'checkout'; // stripe redirect landing
     if (!token && !inAuthGroup) {
       router.replace('/(auth)/login');
-    } else if (token && !inAppGroup) {
+    } else if (token && !inAppGroup && !inPublicRoute) {
       router.replace('/(app)/(tabs)');
     }
   }, [token, segments, loading, router]);

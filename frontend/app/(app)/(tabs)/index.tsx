@@ -1,8 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useRouter } from 'expo-router';
-import { useMemo, useState } from 'react';
+import { useFocusEffect, useRouter } from 'expo-router';
+import { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -43,9 +43,19 @@ export default function SearchScreen() {
   const [fiyat, setFiyat] = useState('');
   const [loading, setLoading] = useState(false);
   const [errMsg, setErrMsg] = useState<string | null>(null);
+  const [credits, setCredits] = useState<number | null>(null);
 
   const gradientEnd = themeName === 'navy' ? 'rgba(10,22,40,0.85)' : 'rgba(13,14,17,0.85)';
   const gradientMid = themeName === 'navy' ? 'rgba(10,22,40,0.2)' : 'rgba(13,14,17,0.2)';
+
+  const loadCredits = useCallback(async () => {
+    try {
+      const c = await apiFetch('/credits/me', {}, token);
+      setCredits(c.credits ?? 0);
+    } catch {}
+  }, [token]);
+
+  useFocusEffect(useCallback(() => { loadCredits(); }, [loadCredits]));
 
   const analyze = async () => {
     setErrMsg(null);
@@ -56,6 +66,10 @@ export default function SearchScreen() {
     const yilNum = parseInt(yil, 10);
     if (isNaN(yilNum) || yilNum < 1950 || yilNum > 2026) {
       setErrMsg('Yıl 1950-2026 arasında olmalı.');
+      return;
+    }
+    if (credits !== null && credits <= 0) {
+      router.push('/(app)/credits');
       return;
     }
     setLoading(true);
@@ -74,9 +88,16 @@ export default function SearchScreen() {
         },
         token,
       );
+      await loadCredits();
       router.push({ pathname: '/(app)/report/[id]', params: { id: report.id } });
     } catch (e: any) {
-      setErrMsg(e.message || 'Analiz başarısız');
+      const raw = e.message || 'Analiz başarısız';
+      // 402 insufficient credits
+      if (raw.includes('insufficient_credits') || raw.includes('Sorgu hakkınız')) {
+        router.push('/(app)/credits');
+        return;
+      }
+      setErrMsg(raw);
     } finally {
       setLoading(false);
     }
@@ -98,6 +119,17 @@ export default function SearchScreen() {
               colors={[gradientMid, gradientEnd, colors.surface]}
               style={StyleSheet.absoluteFillObject}
             />
+
+            <Pressable
+              testID="credits-pill"
+              onPress={() => router.push('/(app)/credits')}
+              style={styles.creditsPill}
+            >
+              <Ionicons name="flash" size={14} color={colors.brand} />
+              <Text style={styles.creditsPillText}>{credits ?? '—'}</Text>
+              <Text style={styles.creditsPillSub}>sorgu</Text>
+            </Pressable>
+
             <View style={styles.heroContent}>
               <Text style={styles.eyebrow} testID="app-eyebrow">OTOEKSPERTİZ AI</Text>
               <Text style={styles.title}>Aracını{'\n'}Analiz Et</Text>
@@ -155,8 +187,13 @@ export default function SearchScreen() {
               keyboardType="numeric"
             />
 
-            {errMsg && (
-              <Text testID="error-msg" style={styles.errText}>{errMsg}</Text>
+            {errMsg && <Text testID="error-msg" style={styles.errText}>{errMsg}</Text>}
+
+            {credits === 0 && (
+              <View style={styles.warnBox} testID="no-credits-warn">
+                <Ionicons name="alert-circle" size={18} color={colors.brand} />
+                <Text style={styles.warnText}>Sorgu hakkın kalmadı. Reklam izle veya paket satın al.</Text>
+              </View>
             )}
 
             <Pressable
@@ -169,6 +206,11 @@ export default function SearchScreen() {
                 <>
                   <ActivityIndicator color={colors.onBrandPrimary} />
                   <Text style={styles.primaryBtnText}>AI Analiz Ediyor…</Text>
+                </>
+              ) : credits === 0 ? (
+                <>
+                  <Ionicons name="flash" size={20} color={colors.onBrandPrimary} />
+                  <Text style={styles.primaryBtnText}>Sorgu Hakkı Al</Text>
                 </>
               ) : (
                 <>
@@ -211,6 +253,23 @@ const createStyles = (colors: ThemeColors) =>
     eyebrow: { color: colors.brandSecondary, fontSize: 11, letterSpacing: 2, marginBottom: spacing.sm, fontFamily: fonts.medium },
     title: { color: colors.onSurface, fontSize: 40, lineHeight: 44, marginBottom: spacing.md, fontFamily: fonts.semibold },
     sub: { color: colors.onSurfaceSecondary, fontSize: 13, lineHeight: 18, fontFamily: fonts.regular },
+    creditsPill: {
+      position: 'absolute',
+      top: spacing.md,
+      right: spacing.lg,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      backgroundColor: 'rgba(0,0,0,0.55)',
+      paddingHorizontal: spacing.md,
+      paddingVertical: 6,
+      borderRadius: radius.pill,
+      borderWidth: 1,
+      borderColor: colors.brand,
+      zIndex: 2,
+    },
+    creditsPillText: { color: colors.brand, fontSize: 14, fontFamily: fonts.semibold },
+    creditsPillSub: { color: colors.onSurfaceSecondary, fontSize: 11, marginLeft: 2, fontFamily: fonts.regular },
     form: { padding: spacing.xl, gap: spacing.md },
     sectionLabel: { color: colors.onSurfaceTertiary, fontSize: 11, letterSpacing: 1.6, marginBottom: spacing.sm, fontFamily: fonts.medium },
     input: {
@@ -224,6 +283,17 @@ const createStyles = (colors: ThemeColors) =>
       fontSize: 15,
       fontFamily: fonts.regular,
     },
+    warnBox: {
+      backgroundColor: colors.brandTertiary,
+      borderColor: colors.brand,
+      borderWidth: 1,
+      borderRadius: radius.md,
+      padding: spacing.md,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+    },
+    warnText: { color: colors.onSurface, fontSize: 13, flex: 1, fontFamily: fonts.regular },
     primaryBtn: {
       backgroundColor: colors.brand,
       borderRadius: radius.md,

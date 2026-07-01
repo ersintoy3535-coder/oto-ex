@@ -1,4 +1,4 @@
-from fastapi import FastAPI, APIRouter, HTTPException, Depends, status
+from fastapi import FastAPI, APIRouter, HTTPException, Depends, status, Request
 from fastapi.security import OAuth2PasswordBearer
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
@@ -8,6 +8,7 @@ import json
 import logging
 import uuid
 import re
+import stripe
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
 from typing import List, Optional
@@ -24,8 +25,12 @@ MONGO_URL = os.environ['MONGO_URL']
 DB_NAME = os.environ['DB_NAME']
 JWT_SECRET = os.environ['JWT_SECRET']
 EMERGENT_LLM_KEY = os.environ['EMERGENT_LLM_KEY']
+STRIPE_API_KEY = os.environ['STRIPE_API_KEY']
+FREE_CREDITS = int(os.environ.get('FREE_CREDITS_ON_SIGNUP', '3'))
 JWT_ALG = "HS256"
 JWT_EXPIRE_DAYS = 30
+
+stripe.api_key = STRIPE_API_KEY
 
 client = AsyncIOMotorClient(MONGO_URL)
 db = client[DB_NAME]
@@ -39,6 +44,15 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/auth/login")
 
 logger = logging.getLogger("oto_ekspertiz")
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+
+
+# --------- Packages ----------
+# Server-defined pricing to prevent client tampering
+CREDIT_PACKAGES = {
+    "small": {"id": "small", "credits": 3, "price_usd_cents": 100, "label": "3 Sorgu"},
+    "medium": {"id": "medium", "credits": 10, "price_usd_cents": 300, "label": "10 Sorgu"},
+    "large": {"id": "large", "credits": 50, "price_usd_cents": 1000, "label": "50 Sorgu"},
+}
 
 
 # ---------------- Models ----------------
@@ -57,6 +71,7 @@ class UserOut(BaseModel):
     id: str
     email: EmailStr
     full_name: Optional[str] = None
+    query_credits: int = 0
 
 
 class TokenOut(BaseModel):
@@ -70,13 +85,13 @@ class AnalyzeIn(BaseModel):
     model: str
     yil: int
     kilometre: Optional[int] = None
-    istenilen_fiyat: Optional[float] = None  # user's asking price to evaluate
+    istenilen_fiyat: Optional[float] = None
 
 
 class TrafficLightItem(BaseModel):
     baslik: str
     aciklama: str
-    seviye: str  # "green" | "yellow" | "red"
+    seviye: str
 
 
 class MaintenanceItem(BaseModel):
@@ -92,7 +107,7 @@ class AnalysisReport(BaseModel):
     yil: int
     kilometre: Optional[int] = None
     istenilen_fiyat: Optional[float] = None
-    guven_skoru: int  # 0-100
+    guven_skoru: int
     ozet: str
     fiyat_min_tl: float
     fiyat_max_tl: float
@@ -115,6 +130,21 @@ class CompareIn(BaseModel):
     car2_id: str
 
 
+class CheckoutCreateIn(BaseModel):
+    package_id: str
+    origin_url: str  # frontend origin, e.g., https://auto-assess-6.preview.emergentagent.com
+
+
+class IapVerifyIn(BaseModel):
+    package_id: str
+    platform: str  # "ios" | "android"
+    receipt: str   # base64 receipt or purchaseToken
+
+
+class RewardAdIn(BaseModel):
+    ad_session_id: str  # client-generated UUID per successful ad view (idempotency)
+
+
 # ---------------- Helpers ----------------
 def hash_password(pw: str) -> str:
     return pwd_context.hash(pw)
@@ -128,6 +158,15 @@ def create_access_token(user_id: str) -> str:
     exp = datetime.now(timezone.utc) + timedelta(days=JWT_EXPIRE_DAYS)
     payload = {"sub": user_id, "exp": int(exp.timestamp())}
     return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALG)
+
+
+def user_to_out(u: dict) -> UserOut:
+    return UserOut(
+        id=u["id"],
+        email=u["email"],
+        full_name=u.get("full_name"),
+        query_credits=int(u.get("query_credits", 0)),
+    )
 
 
 async def get_current_user(token: str = Depends(oauth2_scheme)) -> UserOut:
@@ -146,16 +185,27 @@ async def get_current_user(token: str = Depends(oauth2_scheme)) -> UserOut:
     user = await db.users.find_one({"id": user_id})
     if not user:
         raise cred_exc
-    return UserOut(id=user["id"], email=user["email"], full_name=user.get("full_name"))
+    return user_to_out(user)
 
 
 def strip_json_fence(text: str) -> str:
     text = text.strip()
     if text.startswith("```"):
-        # remove leading fence like ```json
         text = re.sub(r"^```(?:json)?\s*", "", text)
         text = re.sub(r"\s*```$", "", text)
     return text.strip()
+
+
+async def add_credits(user_id: str, delta: int, reason: str, meta: dict | None = None):
+    await db.users.update_one({"id": user_id}, {"$inc": {"query_credits": delta}})
+    await db.credit_txns.insert_one({
+        "id": str(uuid.uuid4()),
+        "user_id": user_id,
+        "delta": delta,
+        "reason": reason,
+        "meta": meta or {},
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    })
 
 
 # ---------------- Auth Routes ----------------
@@ -170,14 +220,20 @@ async def register(data: RegisterIn):
         "email": data.email.lower(),
         "full_name": data.full_name,
         "password_hash": hash_password(data.password),
+        "query_credits": FREE_CREDITS,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
     await db.users.insert_one(doc)
+    await db.credit_txns.insert_one({
+        "id": str(uuid.uuid4()),
+        "user_id": user_id,
+        "delta": FREE_CREDITS,
+        "reason": "signup_bonus",
+        "meta": {},
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    })
     token = create_access_token(user_id)
-    return TokenOut(
-        access_token=token,
-        user=UserOut(id=user_id, email=data.email.lower(), full_name=data.full_name),
-    )
+    return TokenOut(access_token=token, user=user_to_out(doc))
 
 
 @api_router.post("/auth/login", response_model=TokenOut)
@@ -189,10 +245,7 @@ async def login(data: LoginIn):
     if not verify_password(data.password, user["password_hash"]):
         raise HTTPException(401, "E-posta veya şifre hatalı")
     token = create_access_token(user["id"])
-    return TokenOut(
-        access_token=token,
-        user=UserOut(id=user["id"], email=user["email"], full_name=user.get("full_name")),
-    )
+    return TokenOut(access_token=token, user=user_to_out(user))
 
 
 @api_router.get("/auth/me", response_model=UserOut)
@@ -200,7 +253,154 @@ async def me(current_user: UserOut = Depends(get_current_user)):
     return current_user
 
 
-# ---------------- AI Analysis ----------------
+# ---------------- Credits Routes ----------------
+@api_router.get("/credits/me")
+async def get_credits(current_user: UserOut = Depends(get_current_user)):
+    user = await db.users.find_one({"id": current_user.id}, {"_id": 0, "query_credits": 1})
+    return {"credits": int(user.get("query_credits", 0)) if user else 0}
+
+
+@api_router.get("/credits/packages")
+async def packages():
+    return {"packages": list(CREDIT_PACKAGES.values())}
+
+
+@api_router.post("/credits/reward-ad")
+async def reward_ad(data: RewardAdIn, current_user: UserOut = Depends(get_current_user)):
+    """Grant 1 credit per rewarded ad view. Idempotent by ad_session_id."""
+    if not data.ad_session_id or len(data.ad_session_id) < 8:
+        raise HTTPException(400, "ad_session_id gerekli")
+    existing = await db.ad_rewards.find_one({"ad_session_id": data.ad_session_id})
+    if existing:
+        return {"ok": True, "credited": 0, "message": "Zaten kredilendirildi"}
+    await db.ad_rewards.insert_one({
+        "id": str(uuid.uuid4()),
+        "ad_session_id": data.ad_session_id,
+        "user_id": current_user.id,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    })
+    await add_credits(current_user.id, 1, "ad_reward", {"ad_session_id": data.ad_session_id})
+    user = await db.users.find_one({"id": current_user.id}, {"_id": 0, "query_credits": 1})
+    return {"ok": True, "credited": 1, "balance": user.get("query_credits", 0)}
+
+
+# ---------------- Stripe Checkout ----------------
+@api_router.post("/checkout/create")
+async def create_checkout(data: CheckoutCreateIn, current_user: UserOut = Depends(get_current_user)):
+    pkg = CREDIT_PACKAGES.get(data.package_id)
+    if not pkg:
+        raise HTTPException(400, "Geçersiz paket")
+
+    origin = data.origin_url.rstrip("/")
+    success_url = f"{origin}/checkout/return?session_id={{CHECKOUT_SESSION_ID}}&status=success"
+    cancel_url = f"{origin}/checkout/return?status=cancel"
+
+    try:
+        session = stripe.checkout.Session.create(
+            mode="payment",
+            line_items=[{
+                "price_data": {
+                    "currency": "usd",
+                    "unit_amount": pkg["price_usd_cents"],
+                    "product_data": {"name": f"OtoEkspertiz AI — {pkg['label']}"},
+                },
+                "quantity": 1,
+            }],
+            success_url=success_url,
+            cancel_url=cancel_url,
+            metadata={
+                "user_id": current_user.id,
+                "package_id": pkg["id"],
+                "credits": str(pkg["credits"]),
+            },
+        )
+    except Exception as e:
+        logger.exception("stripe checkout create failed")
+        raise HTTPException(502, f"Stripe hatası: {str(e)}")
+
+    await db.stripe_sessions.insert_one({
+        "session_id": session.id,
+        "user_id": current_user.id,
+        "package_id": pkg["id"],
+        "credits": pkg["credits"],
+        "amount_cents": pkg["price_usd_cents"],
+        "fulfilled": False,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    })
+    return {"session_id": session.id, "url": session.url}
+
+
+@api_router.get("/checkout/status/{session_id}")
+async def checkout_status(session_id: str, current_user: UserOut = Depends(get_current_user)):
+    """Poll after Stripe redirect. Idempotently fulfill credits if paid."""
+    record = await db.stripe_sessions.find_one({"session_id": session_id, "user_id": current_user.id}, {"_id": 0})
+    if not record:
+        raise HTTPException(404, "Ödeme oturumu bulunamadı")
+
+    try:
+        session = stripe.checkout.Session.retrieve(session_id)
+    except Exception as e:
+        raise HTTPException(502, f"Stripe hatası: {str(e)}")
+
+    paid = session.get("payment_status") == "paid"
+    credited_now = 0
+    if paid and not record.get("fulfilled"):
+        # atomic fulfill
+        result = await db.stripe_sessions.update_one(
+            {"session_id": session_id, "fulfilled": False},
+            {"$set": {"fulfilled": True, "fulfilled_at": datetime.now(timezone.utc).isoformat()}},
+        )
+        if result.modified_count == 1:
+            await add_credits(current_user.id, record["credits"], "stripe_purchase", {
+                "session_id": session_id, "package_id": record["package_id"],
+            })
+            credited_now = record["credits"]
+
+    user = await db.users.find_one({"id": current_user.id}, {"_id": 0, "query_credits": 1})
+    return {
+        "paid": paid,
+        "status": session.get("payment_status"),
+        "credited_now": credited_now,
+        "balance": int(user.get("query_credits", 0)),
+    }
+
+
+# ---------------- Native IAP (mock verification) ----------------
+@api_router.post("/iap/verify")
+async def iap_verify(data: IapVerifyIn, current_user: UserOut = Depends(get_current_user)):
+    """
+    MOCK IAP receipt verification.
+    In production: verify iOS receipt with Apple `/verifyReceipt`, or Google Play Developer API for Android.
+    For now: accept receipt if non-empty, idempotent by receipt string.
+    """
+    pkg = CREDIT_PACKAGES.get(data.package_id)
+    if not pkg:
+        raise HTTPException(400, "Geçersiz paket")
+    if not data.receipt or len(data.receipt) < 8:
+        raise HTTPException(400, "Makbuz geçersiz")
+    if data.platform not in ("ios", "android"):
+        raise HTTPException(400, "platform ios/android olmalı")
+
+    existing = await db.iap_receipts.find_one({"receipt": data.receipt})
+    if existing:
+        return {"ok": True, "credited": 0, "message": "Zaten kredilendirildi"}
+
+    await db.iap_receipts.insert_one({
+        "id": str(uuid.uuid4()),
+        "receipt": data.receipt,
+        "user_id": current_user.id,
+        "package_id": pkg["id"],
+        "platform": data.platform,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    })
+    await add_credits(current_user.id, pkg["credits"], "iap_purchase", {
+        "package_id": pkg["id"], "platform": data.platform,
+    })
+    user = await db.users.find_one({"id": current_user.id}, {"_id": 0, "query_credits": 1})
+    return {"ok": True, "credited": pkg["credits"], "balance": user.get("query_credits", 0)}
+
+
+# ---------------- AI Analysis (deducts 1 credit) ----------------
 SYSTEM_PROMPT = """Sen bir Türk otomotiv ekspertiz uzmanısın. 20+ yıllık deneyimin var. Kullanıcı sana bir aracın marka, model, yıl ve opsiyonel kilometre bilgisini verecek. Sen o araca özel DETAYLI ve GERÇEK bir analiz yapacaksın.
 
 Cevabını SADECE geçerli JSON formatında ver, başka hiçbir metin ekleme. JSON yapısı ŞU olmalı:
@@ -242,6 +442,29 @@ Her kategoride EN AZ 3 madde olsun. Türkçe cevap ver, para birimi TL. Fiyatlar
 
 @api_router.post("/analyze", response_model=AnalysisReport)
 async def analyze_vehicle(data: AnalyzeIn, current_user: UserOut = Depends(get_current_user)):
+    # Atomic credit deduction (only if credits > 0)
+    result = await db.users.find_one_and_update(
+        {"id": current_user.id, "query_credits": {"$gt": 0}},
+        {"$inc": {"query_credits": -1}},
+        return_document=False,
+    )
+    if not result:
+        raise HTTPException(
+            status_code=402,
+            detail={
+                "code": "insufficient_credits",
+                "message": "Sorgu hakkınız bitti. Reklam izle veya paket satın al.",
+            },
+        )
+    await db.credit_txns.insert_one({
+        "id": str(uuid.uuid4()),
+        "user_id": current_user.id,
+        "delta": -1,
+        "reason": "analyze",
+        "meta": {"marka": data.marka, "model": data.model, "yil": data.yil},
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    })
+
     prompt = f"""Araç bilgileri:
 - Marka: {data.marka}
 - Model: {data.model}
@@ -262,6 +485,16 @@ async def analyze_vehicle(data: AnalyzeIn, current_user: UserOut = Depends(get_c
     try:
         response = await chat.send_message(UserMessage(text=prompt))
     except Exception as e:
+        # Refund credit on LLM failure
+        await db.users.update_one({"id": current_user.id}, {"$inc": {"query_credits": 1}})
+        await db.credit_txns.insert_one({
+            "id": str(uuid.uuid4()),
+            "user_id": current_user.id,
+            "delta": 1,
+            "reason": "refund_llm_error",
+            "meta": {"error": str(e)[:200]},
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        })
         logger.exception("LLM error")
         raise HTTPException(502, f"AI analiz servisi hata verdi: {str(e)}")
 
@@ -269,14 +502,15 @@ async def analyze_vehicle(data: AnalyzeIn, current_user: UserOut = Depends(get_c
     try:
         parsed = json.loads(raw)
     except json.JSONDecodeError:
-        # try to extract first { ... }
         match = re.search(r"\{.*\}", raw, re.DOTALL)
         if not match:
+            await db.users.update_one({"id": current_user.id}, {"$inc": {"query_credits": 1}})
             logger.error(f"Failed to parse JSON: {raw[:500]}")
             raise HTTPException(502, "AI cevabı ayrıştırılamadı")
         try:
             parsed = json.loads(match.group(0))
         except json.JSONDecodeError:
+            await db.users.update_one({"id": current_user.id}, {"$inc": {"query_credits": 1}})
             raise HTTPException(502, "AI cevabı geçersiz JSON")
 
     report = AnalysisReport(
@@ -301,7 +535,6 @@ async def analyze_vehicle(data: AnalyzeIn, current_user: UserOut = Depends(get_c
         dikkat_edilecek_noktalar=parsed.get("dikkat_edilecek_noktalar", []),
         user_id=current_user.id,
     )
-    # persist to history
     doc = report.model_dump()
     doc["created_at"] = doc["created_at"].isoformat()
     await db.reports.insert_one(doc)
@@ -383,7 +616,7 @@ async def compare(data: CompareIn, current_user: UserOut = Depends(get_current_u
     r2 = await db.reports.find_one({"id": data.car2_id, "user_id": current_user.id}, {"_id": 0})
     if not r1 or not r2:
         raise HTTPException(404, "Rapor(lar) bulunamadı")
-    # compute winners
+
     def winner(a, b, key, higher_better=True):
         av, bv = a[key], b[key]
         if av == bv:
@@ -406,7 +639,7 @@ async def compare(data: CompareIn, current_user: UserOut = Depends(get_current_u
 
 @api_router.get("/")
 async def root():
-    return {"message": "OtoEkspertiz AI API", "version": "1.0"}
+    return {"message": "OtoEkspertiz AI API", "version": "1.1"}
 
 
 app.include_router(api_router)
@@ -425,6 +658,9 @@ async def startup_db():
     await db.users.create_index("email", unique=True)
     await db.reports.create_index([("user_id", 1), ("created_at", -1)])
     await db.favorites.create_index([("user_id", 1), ("report_id", 1)], unique=True)
+    await db.ad_rewards.create_index("ad_session_id", unique=True)
+    await db.iap_receipts.create_index("receipt", unique=True)
+    await db.stripe_sessions.create_index("session_id", unique=True)
 
 
 @app.on_event("shutdown")

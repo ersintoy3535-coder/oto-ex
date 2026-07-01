@@ -1,0 +1,51 @@
+{
+  "summary": "OtoEkspertiz AI monetization v1.1 tested end-to-end. Backend: 11/13 pytest passing. Credits/reward-ad/IAP/analyze flows all correct — signup grants 3 credits, /credits/me returns integer balance, /credits/packages returns exactly small(3/$1)/medium(10/$3)/large(50/$10), reward-ad is idempotent by ad_session_id (2nd call returns credited:0), IAP verify credits pkg amount and is idempotent by receipt, /analyze atomically deducts 1 credit on success and returns 402 with detail.code='insufficient_credits' when balance=0. CRITICAL: Stripe checkout FAILS — the API key `sk_test_emergent` in backend/.env is rejected by real Stripe API as `Invalid API Key provided`, so POST /api/checkout/create returns 502 (`stripe._error.AuthenticationError`). Both TestStripeCheckout tests failed as a direct result. Frontend: credits-pill renders top-right on home showing balance, tap navigates to /credits screen; on /credits, watch-ad-btn triggers +1 (mock ad), iap-small triggers +3 via mock IAP verify; profile shows credits-card with correct balance and 'Hak Al' CTA. When credits=0, home shows no-credits-warn box and btn-analyze text becomes 'Sorgu Hakkı Al'; tapping (with form filled) correctly routes to /credits. Minor UX bug: analyze button's credit-check runs AFTER form validation, so tapping 'Sorgu Hakkı Al' on an empty form shows misleading 'Marka, model ve yıl zorunludur' instead of routing to /credits.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "POST /api/checkout/create", "issue": "Stripe rejects the configured API key `sk_test_emergent` with `stripe._error.AuthenticationError: Invalid API Key provided: sk_test_****gent`. Every checkout create returns HTTP 502. The whole Stripe purchase flow is unusable until a real Stripe test key (sk_test_...) is configured in backend/.env, OR the code is switched to use emergentintegrations' Stripe wrapper if that key is meant to work with an Emergent Stripe proxy. Reference: server.py:299 (stripe.checkout.Session.create) + .env:STRIPE_API_KEY=sk_test_emergent.", "priority": "CRITICAL"},
+      {"endpoint": "GET /api/checkout/status/{id}", "issue": "Untestable because no checkout session can be created (see above). Once Stripe key is fixed, retest polling path.", "priority": "HIGH"}
+    ],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "app/(app)/(tabs)/index.tsx analyze()", "issue": "When credits=0, tapping btn-analyze on an empty vehicle form shows 'Marka, model ve yıl zorunludur' instead of routing to /credits. The credit check (line 71-74) runs AFTER form validation (line 62-70). Since the button label is 'Sorgu Hakkı Al' (Get Credits), the credit check should run FIRST so the user is taken to the paywall regardless of form state.", "testID": "btn-analyze", "priority": "MEDIUM"},
+      {"component": "credits-pill", "issue": "Pill text renders as '17sorgu' (no space between number and unit). Minor cosmetic — add a space or margin between the count and the label.", "testID": "credits-pill", "priority": "LOW"}
+    ],
+    "integration_issues": [
+      {"flow": "Stripe checkout from /credits", "issue": "Kart ile (stripe-{pkg}) button cannot open a Stripe session because backend returns 502 (see backend critical). E1 must fix Stripe API key first.", "affected_testIDs": ["stripe-small", "stripe-medium", "stripe-large"]}
+    ],
+    "design_issues": [],
+    "react_native_issues": [
+      {"component": "multiple", "issue": "Persistent console warning 'props.pointerEvents is deprecated. Use style.pointerEvents' on every render. Non-blocking but should be migrated. Reference: any component passing pointerEvents as a prop."}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_credits_v11.py",
+    "/app/backend/tests/test_oto_ekspertiz.py",
+    "/app/test_reports/pytest/credits_v11.xml"
+  ],
+  "action_items": [
+    "CRITICAL: Fix Stripe integration. Options: (a) replace STRIPE_API_KEY with a real Stripe test secret key (sk_test_51...), or (b) if `sk_test_emergent` is supposed to be routed through emergentintegrations' Stripe wrapper, refactor server.py:299 to use that wrapper instead of the raw `stripe` SDK. Currently the raw SDK hits api.stripe.com and gets rejected.",
+    "MEDIUM: In /app/frontend/app/(app)/(tabs)/index.tsx analyze() function, move the `if (credits !== null && credits <= 0)` check BEFORE the form-validation checks so tapping 'Sorgu Hakkı Al' always routes to /credits when balance is 0.",
+    "LOW: Add spacing in credits-pill between count and 'sorgu' label (currently renders '17sorgu').",
+    "LOW: Migrate `pointerEvents` prop usage to `style.pointerEvents` to silence RN Web deprecation warning."
+  ],
+  "critical_code_review_comments": [
+    "server.py still uses deprecated @app.on_event('startup'/'shutdown'); migrate to FastAPI lifespan context manager.",
+    "server.py:41-42 initializes a DUMMY_HASH at import time — good timing-attack mitigation. Nice.",
+    "server.py:200-208 add_credits() writes user update then transaction log non-atomically. If the txn insert fails, the balance drift is silent. Consider MongoDB transactions or writing txn first with pending status.",
+    "credits.tsx buyStripe() uses WebBrowser.openAuthSessionAsync which requires app-scheme deep-linking on native; on web it will just close and status polling handles it — OK.",
+    "iap/verify endpoint is a stub that accepts ANY non-empty receipt (min 8 chars) as valid — clearly documented as MOCK. Fine for MVP but flag before production.",
+    "CORS still allow_origins=['*'] with allow_credentials=True — same warning from iteration_1; not fixed."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_credits_v11.py (new)"
+  ],
+  "success_rate": {"backend": "85% (11/13 — the 2 failures are both Stripe key issue, not test bugs)", "frontend": "95% (all credit flows work; 1 medium UX bug on analyze button order + cosmetic pill spacing)"},
+  "seed_data_creation": "Registered several TEST_credit_*@oto.com / TEST_drain_*@oto.com users to isolate credit-state tests. Also created a fixed user `test_zero@oto.com / pw12345` with query_credits=0 in MongoDB directly (via motor script) to test the paywall UX. Existing test@oto.com balance grew by +4 during frontend tests (watch-ad +1, iap-small +3), now around 17.",
+  "retest_needed": true,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "After Stripe key fix, rerun tests in /app/backend/tests/test_credits_v11.py::TestStripeCheckout — both should pass and Stripe session_id should start with 'cs_' with a real Stripe checkout URL. Also re-verify frontend 'Kart ile' button opens a real Stripe hosted checkout. Test user for zero-credit UX: test_zero@oto.com / pw12345 (query_credits=0). Regular test user: test@oto.com / test123 (has ~17 credits).",
+  "rca_of_issue": "Stripe 502: `sk_test_emergent` is not a valid Stripe API key — Stripe returns `AuthenticationError: Invalid API Key provided: sk_test_****gent`. Backend logs (/var/log/supervisor/backend.err.log) show the AuthenticationError stack. Reproduction: `curl -X POST $BASE/api/checkout/create -H 'Authorization: Bearer <token>' -H 'Content-Type: application/json' -d '{\"package_id\":\"small\",\"origin_url\":\"'$BASE'\"}'` → 502. Mitigation: replace STRIPE_API_KEY with a real Stripe test secret OR route through Emergent's Stripe wrapper."
+}

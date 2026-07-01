@@ -1,16 +1,28 @@
 import { Ionicons } from '@expo/vector-icons';
+import { useFocusEffect, useRouter } from 'expo-router';
+import { useCallback, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useMemo } from 'react';
 
-import { useAuth } from '@/src/auth/AuthContext';
+import { apiFetch, useAuth } from '@/src/auth/AuthContext';
 import { useTheme } from '@/src/theme/ThemeContext';
 import { fonts, radius, spacing, ThemeColors, ThemeName } from '@/src/theme/tokens';
 
 export default function ProfileScreen() {
-  const { user, signOut } = useAuth();
+  const { user, signOut, token } = useAuth();
   const { colors, themeName, setTheme } = useTheme();
+  const router = useRouter();
   const styles = useMemo(() => createStyles(colors), [colors]);
+  const [credits, setCredits] = useState<number | null>(null);
+
+  const loadCredits = useCallback(async () => {
+    try {
+      const c = await apiFetch('/credits/me', {}, token);
+      setCredits(c.credits ?? 0);
+    } catch {}
+  }, [token]);
+
+  useFocusEffect(useCallback(() => { loadCredits(); }, [loadCredits]));
 
   const initials = (user?.full_name || user?.email || '?').substring(0, 2).toUpperCase();
 
@@ -35,6 +47,24 @@ export default function ProfileScreen() {
           <Text style={styles.email}>{user?.email}</Text>
         </View>
       </View>
+
+      <Pressable
+        testID="credits-card"
+        onPress={() => router.push('/(app)/credits')}
+        style={({ pressed }) => [styles.creditsCard, pressed && { opacity: 0.85 }]}
+      >
+        <View style={styles.creditsIcon}>
+          <Ionicons name="flash" size={22} color={colors.brand} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.creditsLabel}>SORGU HAKKI</Text>
+          <Text style={styles.creditsValue}>{credits ?? '—'} <Text style={styles.creditsUnit}>hak</Text></Text>
+        </View>
+        <View style={styles.creditsCta}>
+          <Text style={styles.creditsCtaText}>Hak Al</Text>
+          <Ionicons name="chevron-forward" size={16} color={colors.onBrandPrimary} />
+        </View>
+      </Pressable>
 
       <View style={styles.section}>
         <Text style={styles.sectionLabel}>TEMA</Text>
@@ -67,9 +97,8 @@ export default function ProfileScreen() {
 
       <View style={styles.section}>
         <Text style={styles.sectionLabel}>UYGULAMA</Text>
-        <InfoRow icon="information-circle" title="Sürüm" value="1.0.0" colors={colors} styles={styles} />
+        <InfoRow icon="information-circle" title="Sürüm" value="1.1.0" colors={colors} styles={styles} />
         <InfoRow icon="sparkles" title="AI Modeli" value="Gemini 2.5 Pro" colors={colors} styles={styles} />
-        <InfoRow icon="shield-checkmark" title="Analiz Kapsamı" value="Kronik sorunlar · Piyasa fiyatı · Bakım" colors={colors} styles={styles} />
       </View>
 
       <Pressable
@@ -119,6 +148,24 @@ const createStyles = (colors: ThemeColors) =>
     avatarText: { color: colors.brand, fontSize: 20, fontFamily: fonts.semibold },
     name: { color: colors.onSurface, fontSize: 16, fontFamily: fonts.semibold },
     email: { color: colors.onSurfaceTertiary, fontSize: 12, marginTop: 2, fontFamily: fonts.regular },
+    creditsCard: {
+      marginTop: spacing.md,
+      marginHorizontal: spacing.xl,
+      backgroundColor: colors.brandTertiary,
+      borderColor: colors.brand,
+      borderWidth: 1,
+      borderRadius: radius.md,
+      padding: spacing.lg,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.md,
+    },
+    creditsIcon: { width: 44, height: 44, borderRadius: radius.md, backgroundColor: colors.surfaceSecondary, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.brand },
+    creditsLabel: { color: colors.brandSecondary, fontSize: 10, letterSpacing: 1.4, fontFamily: fonts.medium },
+    creditsValue: { color: colors.onSurface, fontSize: 22, marginTop: 2, fontFamily: fonts.semibold },
+    creditsUnit: { color: colors.onSurfaceTertiary, fontSize: 12, fontFamily: fonts.regular },
+    creditsCta: { backgroundColor: colors.brand, paddingHorizontal: spacing.md, paddingVertical: 8, borderRadius: radius.pill, flexDirection: 'row', alignItems: 'center', gap: 2 },
+    creditsCtaText: { color: colors.onBrandPrimary, fontSize: 12, fontFamily: fonts.semibold },
     section: { paddingHorizontal: spacing.xl, marginTop: spacing.xl, gap: spacing.sm },
     sectionLabel: { color: colors.onSurfaceTertiary, fontSize: 11, letterSpacing: 1.6, marginBottom: spacing.xs, fontFamily: fonts.medium },
     themeRow: {
@@ -131,10 +178,7 @@ const createStyles = (colors: ThemeColors) =>
       alignItems: 'center',
       gap: spacing.md,
     },
-    themeRowActive: {
-      borderColor: colors.brand,
-      backgroundColor: colors.brandTertiary,
-    },
+    themeRowActive: { borderColor: colors.brand, backgroundColor: colors.brandTertiary },
     swatchWrap: { flexDirection: 'row', width: 48, height: 40, position: 'relative' },
     swatch: { width: 28, height: 28, borderRadius: 8, borderWidth: 1 },
     swatchAccent: { position: 'absolute', left: 18, top: 8, width: 22, height: 22 },

@@ -4,7 +4,7 @@ import React, { createContext, useCallback, useContext, useEffect, useState } fr
 const TOKEN_KEY = 'oto_token';
 const USER_KEY = 'oto_user';
 
-export type User = { id: string; email: string; full_name?: string | null };
+export type User = { id: string; email: string; full_name?: string | null; query_credits?: number };
 
 type AuthValue = {
   token: string | null;

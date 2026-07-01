@@ -9,6 +9,10 @@ import logging
 import uuid
 import re
 import stripe
+from emergentintegrations.payments.stripe.checkout import (
+    StripeCheckout,
+    CheckoutSessionRequest,
+)
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
 from typing import List, Optional
@@ -31,6 +35,7 @@ JWT_ALG = "HS256"
 JWT_EXPIRE_DAYS = 30
 
 stripe.api_key = STRIPE_API_KEY
+stripe_checkout = StripeCheckout(api_key=STRIPE_API_KEY)
 
 client = AsyncIOMotorClient(MONGO_URL)
 db = client[DB_NAME]
@@ -128,6 +133,17 @@ class AnalysisReport(BaseModel):
 class CompareIn(BaseModel):
     car1_id: str
     car2_id: str
+
+
+class ChatIn(BaseModel):
+    report_id: str
+    message: str
+
+
+class ChatMsgOut(BaseModel):
+    role: str  # "user" | "assistant"
+    text: str
+    created_at: datetime
 
 
 class CheckoutCreateIn(BaseModel):
@@ -296,16 +312,9 @@ async def create_checkout(data: CheckoutCreateIn, current_user: UserOut = Depend
     cancel_url = f"{origin}/checkout/return?status=cancel"
 
     try:
-        session = stripe.checkout.Session.create(
-            mode="payment",
-            line_items=[{
-                "price_data": {
-                    "currency": "usd",
-                    "unit_amount": pkg["price_usd_cents"],
-                    "product_data": {"name": f"OtoEkspertiz AI — {pkg['label']}"},
-                },
-                "quantity": 1,
-            }],
+        req = CheckoutSessionRequest(
+            amount=pkg["price_usd_cents"] / 100.0,
+            currency="usd",
             success_url=success_url,
             cancel_url=cancel_url,
             metadata={
@@ -314,12 +323,13 @@ async def create_checkout(data: CheckoutCreateIn, current_user: UserOut = Depend
                 "credits": str(pkg["credits"]),
             },
         )
+        session = await stripe_checkout.create_checkout_session(req)
     except Exception as e:
         logger.exception("stripe checkout create failed")
         raise HTTPException(502, f"Stripe hatası: {str(e)}")
 
     await db.stripe_sessions.insert_one({
-        "session_id": session.id,
+        "session_id": session.session_id,
         "user_id": current_user.id,
         "package_id": pkg["id"],
         "credits": pkg["credits"],
@@ -327,7 +337,7 @@ async def create_checkout(data: CheckoutCreateIn, current_user: UserOut = Depend
         "fulfilled": False,
         "created_at": datetime.now(timezone.utc).isoformat(),
     })
-    return {"session_id": session.id, "url": session.url}
+    return {"session_id": session.session_id, "url": session.url}
 
 
 @api_router.get("/checkout/status/{session_id}")
@@ -338,11 +348,11 @@ async def checkout_status(session_id: str, current_user: UserOut = Depends(get_c
         raise HTTPException(404, "Ödeme oturumu bulunamadı")
 
     try:
-        session = stripe.checkout.Session.retrieve(session_id)
+        session = await stripe_checkout.get_checkout_status(session_id)
     except Exception as e:
         raise HTTPException(502, f"Stripe hatası: {str(e)}")
 
-    paid = session.get("payment_status") == "paid"
+    paid = session.payment_status == "paid"
     credited_now = 0
     if paid and not record.get("fulfilled"):
         # atomic fulfill
@@ -359,7 +369,7 @@ async def checkout_status(session_id: str, current_user: UserOut = Depends(get_c
     user = await db.users.find_one({"id": current_user.id}, {"_id": 0, "query_credits": 1})
     return {
         "paid": paid,
-        "status": session.get("payment_status"),
+        "status": session.payment_status,
         "credited_now": credited_now,
         "balance": int(user.get("query_credits", 0)),
     }
@@ -637,9 +647,109 @@ async def compare(data: CompareIn, current_user: UserOut = Depends(get_current_u
     }
 
 
+# ---------------- Report Chat (Gemini 2.5 Flash) ----------------
+def build_chat_system(report: dict) -> str:
+    return f"""Sen bir Türk otomotiv ekspertiz uzmanısın. Kullanıcı belirli bir araçla ilgili sana sorular soracak. Aracın detaylı raporu aşağıdadır. Sorularını KISA, NET ve TÜRKÇE cevapla (2-4 cümle).
+
+ARAÇ: {report['marka']} {report['model']} {report['yil']}
+Güven skoru: {report['guven_skoru']}/100
+Yakıt: {report['yakit_100km_litre']} L/100km
+Piyasa fiyat aralığı: {report['fiyat_min_tl']:.0f} - {report['fiyat_max_tl']:.0f} TL
+Ekspertiz özeti: {report['ozet']}
+Tavsiye: {report['alim_tavsiyesi']}
+
+Mekanik: {', '.join([m['baslik'] for m in report.get('mekanik_sorunlar', [])[:5]])}
+Elektrik: {', '.join([m['baslik'] for m in report.get('elektrik_sorunlar', [])[:5]])}
+Olası masraflar: {', '.join([m['baslik'] for m in report.get('olasi_masraflar', [])[:5]])}
+
+Kurallar:
+- Sadece bu araçla ilgili soruları yanıtla.
+- Alakasız soru gelirse kibarca konuyu araca yönlendir.
+- Uzunca listeler değil, sohbet tarzı kısa cevaplar ver."""
+
+
+@api_router.get("/reports/{report_id}/chat")
+async def get_chat(report_id: str, current_user: UserOut = Depends(get_current_user)):
+    report = await db.reports.find_one({"id": report_id, "user_id": current_user.id}, {"_id": 0})
+    if not report:
+        raise HTTPException(404, "Rapor bulunamadı")
+    msgs = await db.chat_messages.find(
+        {"report_id": report_id, "user_id": current_user.id}, {"_id": 0}
+    ).sort("created_at", 1).to_list(200)
+    return {"messages": msgs}
+
+
+@api_router.post("/reports/{report_id}/chat")
+async def send_chat(report_id: str, data: ChatIn, current_user: UserOut = Depends(get_current_user)):
+    if not data.message.strip():
+        raise HTTPException(400, "Mesaj boş olamaz")
+    report = await db.reports.find_one({"id": report_id, "user_id": current_user.id}, {"_id": 0})
+    if not report:
+        raise HTTPException(404, "Rapor bulunamadı")
+
+    # Store user message
+    now = datetime.now(timezone.utc).isoformat()
+    user_msg = {
+        "id": str(uuid.uuid4()),
+        "report_id": report_id,
+        "user_id": current_user.id,
+        "role": "user",
+        "text": data.message.strip()[:1000],
+        "created_at": now,
+    }
+    await db.chat_messages.insert_one(user_msg)
+    user_msg.pop("_id", None)
+
+    # Load recent history (last 10 messages) for context
+    history = await db.chat_messages.find(
+        {"report_id": report_id, "user_id": current_user.id}, {"_id": 0}
+    ).sort("created_at", -1).limit(11).to_list(11)
+    history.reverse()  # oldest first
+
+    session_id = f"chat-{report_id}-{current_user.id}"
+    chat = LlmChat(
+        api_key=EMERGENT_LLM_KEY,
+        session_id=session_id,
+        system_message=build_chat_system(report),
+    ).with_model("gemini", "gemini-2.5-flash")
+
+    # Compose conversation as a single user turn since LlmChat has one system message
+    # and we pass fresh session each request; prepend recent turns as context.
+    prior_lines = []
+    for m in history[:-1]:  # exclude the just-inserted user message (it's the current turn)
+        prefix = "Kullanıcı" if m["role"] == "user" else "Uzman"
+        prior_lines.append(f"{prefix}: {m['text']}")
+    prior_context = "\n".join(prior_lines)
+    prompt_text = (
+        (f"Önceki konuşma:\n{prior_context}\n\n" if prior_context else "")
+        + f"Yeni soru: {data.message.strip()}"
+    )
+
+    try:
+        response = await chat.send_message(UserMessage(text=prompt_text))
+    except Exception as e:
+        logger.exception("chat LLM error")
+        raise HTTPException(502, f"Sohbet servisi hata verdi: {str(e)}")
+
+    reply_text = response if isinstance(response, str) else str(response)
+    now2 = datetime.now(timezone.utc).isoformat()
+    ai_msg = {
+        "id": str(uuid.uuid4()),
+        "report_id": report_id,
+        "user_id": current_user.id,
+        "role": "assistant",
+        "text": reply_text.strip(),
+        "created_at": now2,
+    }
+    await db.chat_messages.insert_one(ai_msg)
+    ai_msg.pop("_id", None)
+
+    return {"user_msg": user_msg, "reply": ai_msg}
+
+
 @api_router.get("/")
 async def root():
-    return {"message": "OtoEkspertiz AI API", "version": "1.1"}
+    return {"message": "OtoEkspertiz AI API", "version": "1.2"}
 
 
 app.include_router(api_router)
@@ -661,6 +771,7 @@ async def startup_db():
     await db.ad_rewards.create_index("ad_session_id", unique=True)
     await db.iap_receipts.create_index("receipt", unique=True)
     await db.stripe_sessions.create_index("session_id", unique=True)
+    await db.chat_messages.create_index([("report_id", 1), ("created_at", 1)])
 
 
 @app.on_event("shutdown")

@@ -2,13 +2,16 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -16,6 +19,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { apiFetch, useAuth } from '@/src/auth/AuthContext';
 import { useTheme } from '@/src/theme/ThemeContext';
 import { fonts, radius, spacing, ThemeColors, trafficColor, trafficLabel } from '@/src/theme/tokens';
+import { shareReportAsPdf } from '@/src/utils/pdf';
 
 const HERO = 'https://images.unsplash.com/photo-1558678542-d52f29185251?crop=entropy&cs=srgb&fm=jpg&q=85&w=940';
 
@@ -44,10 +48,18 @@ type Report = {
   dikkat_edilecek_noktalar: string[];
 };
 
+type ChatMsg = { id: string; role: 'user' | 'assistant'; text: string; created_at: string };
+
 const scoreColor = (colors: ThemeColors, s: number) =>
   s >= 70 ? colors.success : s >= 45 ? colors.warning : colors.error;
 
 const fmtTL = (n: number) => new Intl.NumberFormat('tr-TR').format(Math.round(n)) + ' ₺';
+
+const SUGGESTIONS = [
+  'Bu araç LPG için uygun mu?',
+  'Uzun yolda konforu nasıl?',
+  'Yedek parça bulmak kolay mı?',
+];
 
 export default function ReportScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -59,6 +71,12 @@ export default function ReportScreen() {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [isFav, setIsFav] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
+  const [chatMsgs, setChatMsgs] = useState<ChatMsg[]>([]);
+  const [chatInput, setChatInput] = useState('');
+  const [sending, setSending] = useState(false);
+  const [sharing, setSharing] = useState(false);
+  const chatScrollRef = useRef<ScrollView>(null);
 
   const gradientBase = themeName === 'navy' ? '10,22,40' : '13,14,17';
 
@@ -68,8 +86,12 @@ export default function ReportScreen() {
     try {
       const r = await apiFetch(`/reports/${id}`, {}, token);
       setReport(r);
-      const favIds = await apiFetch('/favorites/ids', {}, token);
+      const [favIds, chat] = await Promise.all([
+        apiFetch('/favorites/ids', {}, token),
+        apiFetch(`/reports/${id}/chat`, {}, token).catch(() => ({ messages: [] })),
+      ]);
       setIsFav((favIds.ids || []).includes(r.id));
+      setChatMsgs((chat.messages || []) as ChatMsg[]);
     } catch (e: any) {
       setErr(e.message || 'Rapor yüklenemedi');
     } finally {
@@ -90,6 +112,50 @@ export default function ReportScreen() {
         setIsFav(true);
       }
     } catch {}
+  };
+
+  const share = async () => {
+    if (!report || sharing) return;
+    setSharing(true);
+    try {
+      await shareReportAsPdf(report);
+    } catch (e: any) {
+      console.log('share err', e);
+    } finally {
+      setSharing(false);
+    }
+  };
+
+  const sendChat = async (text?: string) => {
+    const message = (text ?? chatInput).trim();
+    if (!message || !report || sending) return;
+    setChatInput('');
+    setSending(true);
+    // optimistic append
+    const optimistic: ChatMsg = {
+      id: `tmp-${Date.now()}`,
+      role: 'user',
+      text: message,
+      created_at: new Date().toISOString(),
+    };
+    setChatMsgs((prev) => [...prev, optimistic]);
+    setTimeout(() => chatScrollRef.current?.scrollToEnd({ animated: true }), 60);
+    try {
+      const res = await apiFetch(
+        `/reports/${report.id}/chat`,
+        { method: 'POST', body: JSON.stringify({ report_id: report.id, message }) },
+        token,
+      );
+      setChatMsgs((prev) => {
+        const withoutOptimistic = prev.filter((m) => m.id !== optimistic.id);
+        return [...withoutOptimistic, res.user_msg as ChatMsg, res.reply as ChatMsg];
+      });
+      setTimeout(() => chatScrollRef.current?.scrollToEnd({ animated: true }), 80);
+    } catch (e: any) {
+      setChatMsgs((prev) => prev.filter((m) => m.id !== optimistic.id));
+    } finally {
+      setSending(false);
+    }
   };
 
   if (loading) {
@@ -119,7 +185,7 @@ export default function ReportScreen() {
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
-      <ScrollView contentContainerStyle={{ paddingBottom: spacing.xxxl }}>
+      <ScrollView contentContainerStyle={{ paddingBottom: 120 }}>
         <View style={styles.hero}>
           <Image source={{ uri: HERO }} style={StyleSheet.absoluteFillObject} contentFit="cover" />
           <LinearGradient
@@ -130,13 +196,22 @@ export default function ReportScreen() {
             <Pressable testID="close-report" onPress={() => router.back()} style={styles.iconBtn} hitSlop={12}>
               <Ionicons name="arrow-back" size={22} color={colors.onSurface} />
             </Pressable>
-            <Pressable testID="toggle-fav" onPress={toggleFav} style={styles.iconBtn} hitSlop={12}>
-              <Ionicons
-                name={isFav ? 'star' : 'star-outline'}
-                size={22}
-                color={isFav ? colors.brandSecondary : colors.onSurface}
-              />
-            </Pressable>
+            <View style={{ flexDirection: 'row', gap: spacing.sm }}>
+              <Pressable testID="share-pdf" onPress={share} style={styles.iconBtn} hitSlop={12} disabled={sharing}>
+                {sharing ? (
+                  <ActivityIndicator size="small" color={colors.brand} />
+                ) : (
+                  <Ionicons name="share-outline" size={20} color={colors.onSurface} />
+                )}
+              </Pressable>
+              <Pressable testID="toggle-fav" onPress={toggleFav} style={styles.iconBtn} hitSlop={12}>
+                <Ionicons
+                  name={isFav ? 'star' : 'star-outline'}
+                  size={22}
+                  color={isFav ? colors.brandSecondary : colors.onSurface}
+                />
+              </Pressable>
+            </View>
           </View>
           <View style={styles.heroContent}>
             <Text style={styles.eyebrow}>EKSPERTİZ RAPORU</Text>
@@ -215,6 +290,91 @@ export default function ReportScreen() {
           </View>
         )}
       </ScrollView>
+
+      {/* Ask AI floating button */}
+      {!chatOpen && (
+        <Pressable
+          testID="open-chat"
+          onPress={() => setChatOpen(true)}
+          style={styles.fab}
+        >
+          <Ionicons name="chatbubbles" size={20} color={colors.onBrandPrimary} />
+          <Text style={styles.fabText}>AI'ya Sor</Text>
+        </Pressable>
+      )}
+
+      {/* Chat panel */}
+      {chatOpen && (
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={styles.chatPanel}
+        >
+          <View style={styles.chatHeader}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.chatTitle}>Bu araca özel sorular</Text>
+              <Text style={styles.chatSub}>Gemini 2.5 Flash · anında cevap</Text>
+            </View>
+            <Pressable testID="close-chat" onPress={() => setChatOpen(false)} hitSlop={12} style={styles.chatCloseBtn}>
+              <Ionicons name="close" size={22} color={colors.onSurface} />
+            </Pressable>
+          </View>
+
+          <ScrollView
+            ref={chatScrollRef}
+            style={styles.chatMessages}
+            contentContainerStyle={{ padding: spacing.md, gap: spacing.sm }}
+            onContentSizeChange={() => chatScrollRef.current?.scrollToEnd({ animated: true })}
+          >
+            {chatMsgs.length === 0 && (
+              <View style={styles.suggestionWrap}>
+                <Text style={styles.suggestionLabel}>ÖRNEK SORULAR</Text>
+                {SUGGESTIONS.map((s, i) => (
+                  <Pressable
+                    key={i}
+                    testID={`chat-suggest-${i}`}
+                    style={styles.suggestionChip}
+                    onPress={() => sendChat(s)}
+                  >
+                    <Ionicons name="sparkles" size={14} color={colors.brandSecondary} />
+                    <Text style={styles.suggestionText}>{s}</Text>
+                  </Pressable>
+                ))}
+              </View>
+            )}
+            {chatMsgs.map((m) => (
+              <View key={m.id} style={[styles.msg, m.role === 'user' ? styles.msgUser : styles.msgAi]}>
+                <Text style={m.role === 'user' ? styles.msgUserText : styles.msgAiText}>{m.text}</Text>
+              </View>
+            ))}
+            {sending && (
+              <View style={[styles.msg, styles.msgAi]}>
+                <ActivityIndicator color={colors.brand} size="small" />
+              </View>
+            )}
+          </ScrollView>
+
+          <View style={styles.chatInputRow}>
+            <TextInput
+              testID="chat-input"
+              placeholder="Bu araç hakkında bir şey sor…"
+              placeholderTextColor={colors.onSurfaceTertiary}
+              value={chatInput}
+              onChangeText={setChatInput}
+              style={styles.chatInput}
+              editable={!sending}
+              onSubmitEditing={() => sendChat()}
+            />
+            <Pressable
+              testID="chat-send"
+              onPress={() => sendChat()}
+              disabled={!chatInput.trim() || sending}
+              style={[styles.chatSendBtn, (!chatInput.trim() || sending) && { opacity: 0.4 }]}
+            >
+              <Ionicons name="send" size={18} color={colors.onBrandPrimary} />
+            </Pressable>
+          </View>
+        </KeyboardAvoidingView>
+      )}
     </SafeAreaView>
   );
 }
@@ -261,78 +421,95 @@ const createStyles = (colors: ThemeColors) =>
     blockHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.sm },
     sectionLabel: { color: colors.onSurfaceTertiary, fontSize: 11, letterSpacing: 1.6, fontFamily: fonts.medium },
     scoreCard: {
-      backgroundColor: colors.surfaceSecondary,
-      borderRadius: radius.md,
-      borderWidth: 2,
-      padding: spacing.xl,
-      alignItems: 'center',
-      flexDirection: 'row',
-      gap: spacing.md,
-      justifyContent: 'center',
+      backgroundColor: colors.surfaceSecondary, borderRadius: radius.md, borderWidth: 2, padding: spacing.xl,
+      alignItems: 'center', flexDirection: 'row', gap: spacing.md, justifyContent: 'center',
     },
     scoreLabel: { color: colors.onSurfaceTertiary, fontSize: 11, letterSpacing: 1.4, position: 'absolute', top: spacing.sm, alignSelf: 'center', fontFamily: fonts.medium },
     scoreValue: { fontSize: 64, lineHeight: 70, fontFamily: fonts.semibold },
     scoreMax: { color: colors.onSurfaceTertiary, fontSize: 20, marginTop: 24, fontFamily: fonts.regular },
     summary: { color: colors.onSurfaceSecondary, fontSize: 14, lineHeight: 20, marginTop: spacing.md, fontFamily: fonts.regular },
-    adviceCard: {
-      backgroundColor: colors.surfaceSecondary,
-      borderRadius: radius.md,
-      borderLeftWidth: 4,
-      padding: spacing.lg,
-      gap: spacing.xs,
-    },
+    adviceCard: { backgroundColor: colors.surfaceSecondary, borderRadius: radius.md, borderLeftWidth: 4, padding: spacing.lg, gap: spacing.xs },
     adviceLabel: { color: colors.brandSecondary, fontSize: 11, letterSpacing: 1.4, fontFamily: fonts.medium },
     adviceText: { color: colors.onSurface, fontSize: 15, lineHeight: 21, fontFamily: fonts.regular },
     statsRow: { flexDirection: 'row', gap: spacing.md, marginTop: spacing.sm },
-    statCard: {
-      flex: 1,
-      backgroundColor: colors.surfaceSecondary,
-      borderColor: colors.border,
-      borderWidth: 1,
-      borderRadius: radius.md,
-      padding: spacing.lg,
-      gap: 4,
-    },
+    statCard: { flex: 1, backgroundColor: colors.surfaceSecondary, borderColor: colors.border, borderWidth: 1, borderRadius: radius.md, padding: spacing.lg, gap: 4 },
     statLabel: { color: colors.onSurfaceTertiary, fontSize: 11, letterSpacing: 1, marginTop: spacing.xs, fontFamily: fonts.medium },
     statValue: { color: colors.onSurface, fontSize: 22, fontFamily: fonts.semibold },
     statSub: { color: colors.onSurfaceTertiary, fontSize: 11, fontFamily: fonts.regular },
-    priceCommentCard: {
-      marginTop: spacing.sm,
-      flexDirection: 'row',
-      gap: spacing.sm,
-      backgroundColor: colors.brandTertiary,
-      padding: spacing.md,
-      borderRadius: radius.md,
-      alignItems: 'flex-start',
-    },
+    priceCommentCard: { marginTop: spacing.sm, flexDirection: 'row', gap: spacing.sm, backgroundColor: colors.brandTertiary, padding: spacing.md, borderRadius: radius.md, alignItems: 'flex-start' },
     priceCommentText: { color: colors.onSurface, fontSize: 13, lineHeight: 18, flex: 1, fontFamily: fonts.regular },
-    issueCard: {
-      backgroundColor: colors.surfaceSecondary,
-      borderColor: colors.border,
-      borderWidth: 1,
-      borderRadius: radius.md,
-      padding: spacing.lg,
-      marginBottom: spacing.sm,
-    },
+    issueCard: { backgroundColor: colors.surfaceSecondary, borderColor: colors.border, borderWidth: 1, borderRadius: radius.md, padding: spacing.lg, marginBottom: spacing.sm },
     issueTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.xs, gap: spacing.sm },
     issueTitle: { color: colors.onSurface, fontSize: 15, flex: 1, fontFamily: fonts.semibold },
     badge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: radius.pill, borderWidth: 1 },
     badgeText: { fontSize: 10, letterSpacing: 1, fontFamily: fonts.semibold },
     issueDesc: { color: colors.onSurfaceSecondary, fontSize: 13, lineHeight: 19, fontFamily: fonts.regular },
-    maintCard: {
-      flexDirection: 'row',
-      backgroundColor: colors.surfaceSecondary,
-      borderColor: colors.border,
-      borderWidth: 1,
-      borderRadius: radius.md,
-      padding: spacing.md,
-      marginBottom: spacing.sm,
-      alignItems: 'center',
-      gap: spacing.md,
-    },
+    maintCard: { flexDirection: 'row', backgroundColor: colors.surfaceSecondary, borderColor: colors.border, borderWidth: 1, borderRadius: radius.md, padding: spacing.md, marginBottom: spacing.sm, alignItems: 'center', gap: spacing.md },
     maintName: { color: colors.onSurface, fontSize: 14, fontFamily: fonts.semibold },
     maintPeriod: { color: colors.onSurfaceTertiary, fontSize: 12, marginTop: 2, fontFamily: fonts.regular },
     maintCost: { color: colors.brandSecondary, fontSize: 13, fontFamily: fonts.semibold },
     noteRow: { flexDirection: 'row', gap: spacing.sm, alignItems: 'flex-start', marginBottom: spacing.xs, paddingRight: spacing.md },
     noteText: { color: colors.onSurfaceSecondary, fontSize: 13, lineHeight: 19, flex: 1, fontFamily: fonts.regular },
+    fab: {
+      position: 'absolute',
+      right: spacing.xl,
+      bottom: spacing.xl,
+      backgroundColor: colors.brand,
+      paddingHorizontal: spacing.lg,
+      paddingVertical: spacing.md,
+      borderRadius: radius.pill,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.xs,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.3,
+      shadowRadius: 8,
+      elevation: 6,
+    },
+    fabText: { color: colors.onBrandPrimary, fontSize: 14, fontFamily: fonts.semibold },
+    chatPanel: {
+      position: 'absolute',
+      left: 0, right: 0, bottom: 0,
+      backgroundColor: colors.surface,
+      borderTopWidth: 1,
+      borderColor: colors.border,
+      borderTopLeftRadius: radius.lg,
+      borderTopRightRadius: radius.lg,
+      height: '75%',
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: -4 },
+      shadowOpacity: 0.4,
+      shadowRadius: 12,
+      elevation: 20,
+    },
+    chatHeader: { flexDirection: 'row', alignItems: 'center', padding: spacing.md, borderBottomWidth: 1, borderColor: colors.border, gap: spacing.md },
+    chatTitle: { color: colors.onSurface, fontSize: 15, fontFamily: fonts.semibold },
+    chatSub: { color: colors.onSurfaceTertiary, fontSize: 11, marginTop: 2, fontFamily: fonts.regular },
+    chatCloseBtn: { width: 36, height: 36, borderRadius: radius.pill, backgroundColor: colors.surfaceSecondary, alignItems: 'center', justifyContent: 'center' },
+    chatMessages: { flex: 1 },
+    suggestionWrap: { gap: spacing.sm },
+    suggestionLabel: { color: colors.onSurfaceTertiary, fontSize: 10, letterSpacing: 1.4, marginBottom: spacing.xs, fontFamily: fonts.medium },
+    suggestionChip: {
+      flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
+      backgroundColor: colors.surfaceSecondary,
+      borderColor: colors.border, borderWidth: 1, borderRadius: radius.pill,
+      paddingHorizontal: spacing.md, paddingVertical: 10,
+    },
+    suggestionText: { color: colors.onSurface, fontSize: 13, fontFamily: fonts.regular },
+    msg: { maxWidth: '85%', paddingHorizontal: spacing.md, paddingVertical: spacing.sm, borderRadius: radius.md },
+    msgUser: { backgroundColor: colors.brand, alignSelf: 'flex-end', borderBottomRightRadius: 4 },
+    msgUserText: { color: colors.onBrandPrimary, fontSize: 14, lineHeight: 19, fontFamily: fonts.regular },
+    msgAi: { backgroundColor: colors.surfaceSecondary, alignSelf: 'flex-start', borderBottomLeftRadius: 4, borderWidth: 1, borderColor: colors.border },
+    msgAiText: { color: colors.onSurface, fontSize: 14, lineHeight: 19, fontFamily: fonts.regular },
+    chatInputRow: { flexDirection: 'row', padding: spacing.md, gap: spacing.sm, borderTopWidth: 1, borderColor: colors.border, alignItems: 'center' },
+    chatInput: {
+      flex: 1,
+      backgroundColor: colors.surfaceSecondary,
+      borderColor: colors.border, borderWidth: 1,
+      borderRadius: radius.pill,
+      paddingHorizontal: spacing.lg, paddingVertical: 12,
+      color: colors.onSurface, fontSize: 14, fontFamily: fonts.regular,
+    },
+    chatSendBtn: { width: 44, height: 44, borderRadius: radius.pill, backgroundColor: colors.brand, alignItems: 'center', justifyContent: 'center' },
   });

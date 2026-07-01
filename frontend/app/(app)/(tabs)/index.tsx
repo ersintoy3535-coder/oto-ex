@@ -59,6 +59,10 @@ export default function SearchScreen() {
 
   const analyze = async () => {
     setErrMsg(null);
+    if (credits !== null && credits <= 0) {
+      router.push('/(app)/credits');
+      return;
+    }
     if (!marka.trim() || !model.trim() || !yil.trim()) {
       setErrMsg('Marka, model ve yıl zorunludur.');
       return;
@@ -66,10 +70,6 @@ export default function SearchScreen() {
     const yilNum = parseInt(yil, 10);
     if (isNaN(yilNum) || yilNum < 1950 || yilNum > 2026) {
       setErrMsg('Yıl 1950-2026 arasında olmalı.');
-      return;
-    }
-    if (credits !== null && credits <= 0) {
-      router.push('/(app)/credits');
       return;
     }
     setLoading(true);
@@ -127,7 +127,7 @@ export default function SearchScreen() {
             >
               <Ionicons name="flash" size={14} color={colors.brand} />
               <Text style={styles.creditsPillText}>{credits ?? '—'}</Text>
-              <Text style={styles.creditsPillSub}>sorgu</Text>
+              <Text style={styles.creditsPillSub}> sorgu</Text>
             </Pressable>
 
             <View style={styles.heroContent}>
